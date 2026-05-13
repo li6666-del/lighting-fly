@@ -1,0 +1,37 @@
+# Unity generated folders
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+
+# Visual Studio / Rider / VS Code generated files
+.vs/
+.vscode/
+*.csproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+
+# Unity generated metadata cache
+sysinfo.txt
+
+# Crash reports
+crashlytics-build.properties
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Unity addressables / asset store temp data
+[Aa]ssets/[Aa]ddressable[Aa]ssets[Dd]ata/*/*.bin*
+[Aa]ssets/AssetStoreTools*
+
+# Rider
+.idea/
