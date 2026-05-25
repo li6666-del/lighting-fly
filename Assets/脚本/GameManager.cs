@@ -14,7 +14,10 @@ public class GameManager : MonoBehaviour
     public void Startgame()
     {
         Time.timeScale = 1f;
-        SceneManager.LoadScene("SetMenu1");
+        if (!StartIntroVideoTransition.PlayThenLoad("SetMenu1"))
+        {
+            SceneManager.LoadScene("SetMenu1");
+        }
     }
 
     public void Quitgame()
@@ -121,10 +124,10 @@ public class GameManager : MonoBehaviour
     {
         ApplyStyleToTaggedObjects(
             "Enemy",
-            new Color(0.9f, 0.04f, 0.02f),
-            new Color(1f, 0.12f, 0.04f),
-            2.4f,
-            100f
+            new Color(0.75f, 0.03f, 0.01f),
+            new Color(1f, 0.18f, 0.04f),
+            0.55f,
+            18f
         );
     }
 
@@ -183,7 +186,7 @@ public class GameManager : MonoBehaviour
         Renderer[] renderers = root.GetComponentsInChildren<Renderer>();
         foreach (Renderer renderer in renderers)
         {
-            if (renderer == null || styledRenderers.ContainsKey(renderer))
+            if (renderer == null || renderer is ParticleSystemRenderer || renderer is TrailRenderer || styledRenderers.ContainsKey(renderer))
                 continue;
 
             Material[] materials = renderer.materials;
@@ -195,7 +198,7 @@ public class GameManager : MonoBehaviour
                 if (material.HasProperty("_EmissionColor"))
                 {
                     material.EnableKeyword("_EMISSION");
-                    material.SetColor("_EmissionColor", glowColor * 0.75f);
+                    material.SetColor("_EmissionColor", glowColor * 0.55f);
                 }
 
                 if (material.HasProperty("_Color"))
@@ -236,8 +239,8 @@ public class GameManager : MonoBehaviour
         Light light = node.AddComponent<Light>();
         light.type = LightType.Point;
         light.color = color;
-        light.intensity = isPlayer ? 3.5f : 2.5f;
-        light.range = isPlayer ? 65f : 45f;
+        light.intensity = isPlayer ? 3.5f : 0.65f;
+        light.range = isPlayer ? 65f : 16f;
 
         ParticleSystem flame = CreateEngineParticle(node.transform, color, isPlayer);
         ParticleSystem smoke = CreateEngineSmoke(node.transform, isPlayer);
@@ -280,19 +283,21 @@ public class GameManager : MonoBehaviour
         ParticleSystem.MainModule main = particles.main;
         main.loop = true;
         main.duration = 0.6f;
-        main.startLifetime = isPlayer ? 0.28f : 0.22f;
-        main.startSpeed = isPlayer ? new ParticleSystem.MinMaxCurve(35f, 70f) : new ParticleSystem.MinMaxCurve(28f, 58f);
-        main.startSize = isPlayer ? new ParticleSystem.MinMaxCurve(6f, 13f) : new ParticleSystem.MinMaxCurve(4f, 10f);
-        main.startColor = new ParticleSystem.MinMaxGradient(Color.white, color);
+        main.startLifetime = isPlayer ? 0.28f : 0.18f;
+        main.startSpeed = isPlayer ? new ParticleSystem.MinMaxCurve(35f, 70f) : new ParticleSystem.MinMaxCurve(18f, 38f);
+        main.startSize = isPlayer ? new ParticleSystem.MinMaxCurve(6f, 13f) : new ParticleSystem.MinMaxCurve(1.2f, 2.8f);
+        main.startColor = isPlayer
+            ? new ParticleSystem.MinMaxGradient(Color.white, color)
+            : new ParticleSystem.MinMaxGradient(Color.Lerp(color, Color.white, 0.12f), color * 0.32f);
         main.simulationSpace = ParticleSystemSimulationSpace.World;
 
         ParticleSystem.EmissionModule emission = particles.emission;
-        emission.rateOverTime = isPlayer ? 95f : 70f;
+        emission.rateOverTime = isPlayer ? 95f : 18f;
 
         ParticleSystem.ShapeModule shape = particles.shape;
         shape.shapeType = ParticleSystemShapeType.Cone;
         shape.angle = 11f;
-        shape.radius = isPlayer ? 3.2f : 2.3f;
+        shape.radius = isPlayer ? 3.2f : 0.65f;
 
         ParticleSystemRenderer renderer = particles.GetComponent<ParticleSystemRenderer>();
         renderer.renderMode = ParticleSystemRenderMode.Billboard;
@@ -319,12 +324,12 @@ public class GameManager : MonoBehaviour
         main.simulationSpace = ParticleSystemSimulationSpace.World;
 
         ParticleSystem.EmissionModule emission = particles.emission;
-        emission.rateOverTime = isPlayer ? 22f : 16f;
+        emission.rateOverTime = isPlayer ? 22f : 5f;
 
         ParticleSystem.ShapeModule shape = particles.shape;
         shape.shapeType = ParticleSystemShapeType.Cone;
         shape.angle = 18f;
-        shape.radius = isPlayer ? 4f : 3f;
+        shape.radius = isPlayer ? 4f : 0.75f;
 
         ParticleSystemRenderer renderer = particles.GetComponent<ParticleSystemRenderer>();
         renderer.renderMode = ParticleSystemRenderMode.Billboard;

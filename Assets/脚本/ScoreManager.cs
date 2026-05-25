@@ -6,18 +6,17 @@ public class ScoreManager : MonoBehaviour
     public TextMeshProUGUI scoreText;
     public static int score = 0;
 
+    private int lastScore = -1;
+
     void Start()
     {
         ApplyScoreStyle();
+        UpdateScoreText();
     }
 
     void Update()
     {
-        if (scoreText != null)
-        {
-            ApplyScoreStyle();
-            scoreText.SetText("Score: {0}", score);
-        }
+        UpdateScoreText();
     }
 
     void ApplyScoreStyle()
@@ -27,5 +26,14 @@ public class ScoreManager : MonoBehaviour
 
         scoreText.color = new Color(0.45f, 1f, 0.08f, 1f);
         scoreText.fontStyle = FontStyles.Bold;
+    }
+
+    void UpdateScoreText()
+    {
+        if (scoreText == null || score == lastScore)
+            return;
+
+        lastScore = score;
+        scoreText.SetText("Score: {0}", score);
     }
 }

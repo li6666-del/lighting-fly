@@ -35,3 +35,7 @@ Thumbs.db
 
 # Rider
 .idea/
+
+# Local AI/generated workspace scratch
+.claude/
+outputs/probe/

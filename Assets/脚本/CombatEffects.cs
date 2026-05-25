@@ -11,7 +11,26 @@ public static class CombatEffects
 
     public static void ApplyPlayerShipVisuals(GameObject ship)
     {
-        // Keep the player ship's original prefab materials intact.
+        if (ship == null || ship.transform.Find("Runtime Player Hero FX") != null)
+            return;
+
+        Color tintColor = new Color(0.04f, 0.18f, 0.22f);
+        Color glowColor = new Color(0.08f, 0.92f, 1f);
+        Renderer[] renderers = ship.GetComponentsInChildren<Renderer>();
+        foreach (Renderer renderer in renderers)
+        {
+            if (renderer == null || renderer is ParticleSystemRenderer || renderer is TrailRenderer)
+                continue;
+
+            Material[] materials = renderer.materials;
+            foreach (Material material in materials)
+            {
+                TuneExistingShipMaterial(material, tintColor, glowColor, 0.09f, 0.18f);
+            }
+        }
+
+        AddPersistentGlowLight(ship.transform, glowColor, 1.05f, 26f);
+        AddPlayerHeroFx(ship.transform);
     }
 
     public static void AttachPlayerEngineJet(GameObject ship, Transform firePoint)
@@ -30,19 +49,196 @@ public static class CombatEffects
 
         Light light = node.AddComponent<Light>();
         light.type = LightType.Point;
-        light.color = new Color(0.15f, 0.85f, 1f);
-        light.intensity = 3.4f;
-        light.range = 42f;
+        light.color = new Color(0.18f, 0.82f, 1f);
+        light.intensity = 4.6f;
+        light.range = 48f;
 
-        ParticleSystem core = CreatePlayerEngineJetParticle(node.transform, new Color(0.15f, 0.92f, 1f, 0.95f), 0.28f, 0.9f, 42f, 82f, 150f, 0.34f, 4f);
-        ParticleSystem glow = CreatePlayerEngineJetParticle(node.transform, new Color(0.05f, 0.48f, 1f, 0.32f), 0.75f, 1.9f, 18f, 42f, 70f, 0.42f, 6f);
-        core.Play();
-        glow.Play();
+        PlayerEnginePulse pulse = node.AddComponent<PlayerEnginePulse>();
+        pulse.Initialize(light, 3.4f, 5.8f, 10.5f, 38f, 56f);
+
+        CreateRocketEnginePlume(
+            node.transform,
+            "Rocket White Core",
+            Color.white * 2.8f,
+            new Color(0.62f, 1.45f, 2.6f, 1f),
+            new Color(0.05f, 0.58f, 1.7f, 0f),
+            0.18f,
+            0.55f,
+            72f,
+            132f,
+            420f,
+            0.28f,
+            0.52f,
+            2.8f,
+            0.26f,
+            420,
+            false);
+
+        CreateRocketEnginePlume(
+            node.transform,
+            "Rocket Blue Outer Flame",
+            new Color(0.18f, 1.0f, 2.4f, 0.86f),
+            new Color(0.0f, 0.72f, 2.8f, 0.42f),
+            new Color(0.0f, 0.18f, 0.9f, 0f),
+            0.48f,
+            1.35f,
+            38f,
+            92f,
+            280f,
+            0.52f,
+            0.92f,
+            5.2f,
+            0.95f,
+            360,
+            false);
+
+        CreateRocketEnginePlume(
+            node.transform,
+            "Rocket Orange Heat",
+            new Color(2.4f, 0.88f, 0.16f, 0.58f),
+            new Color(1.35f, 0.24f, 0.04f, 0.26f),
+            new Color(0.45f, 0.06f, 0.02f, 0f),
+            0.58f,
+            1.7f,
+            24f,
+            62f,
+            120f,
+            0.45f,
+            0.78f,
+            9f,
+            1.25f,
+            180,
+            false);
+
+        CreateRocketEngineSmoke(node.transform);
+    }
+
+    private static void AddPlayerHeroFx(Transform root)
+    {
+        Bounds bounds;
+        if (!TryGetLocalBounds(root, out bounds))
+            return;
+
+        GameObject group = new GameObject("Runtime Player Hero FX");
+        group.transform.SetParent(root, false);
+
+        Color energy = new Color(0.05f, 0.95f, 1f, 1f);
+        Material material = GetAccentMaterial(energy, true);
+
+        float width = Mathf.Max(bounds.size.x, 10f);
+        float depth = Mathf.Max(bounds.size.z, 12f);
+        float height = Mathf.Max(bounds.size.y, 4f);
+        float y = bounds.center.y + height * 0.48f;
+
+        AddAccentCube(group.transform, material, new Vector3(bounds.center.x, y, bounds.center.z + depth * 0.08f), new Vector3(width * 0.06f, height * 0.035f, depth * 0.72f));
+        AddAccentCube(group.transform, material, new Vector3(bounds.center.x - width * 0.28f, y, bounds.center.z - depth * 0.02f), new Vector3(width * 0.26f, height * 0.035f, depth * 0.075f));
+        AddAccentCube(group.transform, material, new Vector3(bounds.center.x + width * 0.28f, y, bounds.center.z - depth * 0.02f), new Vector3(width * 0.26f, height * 0.035f, depth * 0.075f));
+        AddAccentBeacon(group.transform, material, energy, new Vector3(bounds.center.x, y, bounds.center.z + depth * 0.43f), Mathf.Max(width * 0.045f, 0.9f));
+
+        AddPlayerWingTrail(group.transform, new Vector3(bounds.center.x - width * 0.44f, y, bounds.center.z - depth * 0.08f), energy, Mathf.Max(width * 0.035f, 0.8f));
+        AddPlayerWingTrail(group.transform, new Vector3(bounds.center.x + width * 0.44f, y, bounds.center.z - depth * 0.08f), energy, Mathf.Max(width * 0.035f, 0.8f));
+        AddPlayerEnergyParticles(group.transform, bounds.center, Mathf.Max(width, depth) * 0.34f, energy);
+
+        Light light = group.AddComponent<Light>();
+        light.type = LightType.Point;
+        light.color = energy;
+        light.intensity = 0.95f;
+        light.range = Mathf.Max(width, depth) * 1.25f;
+
+        PlayerHeroPulse pulse = group.AddComponent<PlayerHeroPulse>();
+        pulse.Initialize(light, 0.78f, 1.25f, 4.8f);
+    }
+
+    private static void AddPlayerWingTrail(Transform parent, Vector3 localPosition, Color color, float width)
+    {
+        GameObject node = new GameObject("Player Wing Light Trail");
+        node.transform.SetParent(parent, false);
+        node.transform.localPosition = localPosition;
+
+        TrailRenderer trail = node.AddComponent<TrailRenderer>();
+        trail.time = 0.26f;
+        trail.startWidth = width;
+        trail.endWidth = 0f;
+        trail.minVertexDistance = 0.12f;
+        trail.numCornerVertices = 3;
+        trail.numCapVertices = 3;
+        trail.alignment = LineAlignment.View;
+        trail.material = GetAdditiveParticleMaterial();
+
+        Gradient gradient = new Gradient();
+        gradient.SetKeys(
+            new[]
+            {
+                new GradientColorKey(Color.Lerp(Color.white, color, 0.35f), 0f),
+                new GradientColorKey(color, 0.42f),
+                new GradientColorKey(color * 0.25f, 1f)
+            },
+            new[]
+            {
+                new GradientAlphaKey(0.62f, 0f),
+                new GradientAlphaKey(0.34f, 0.42f),
+                new GradientAlphaKey(0f, 1f)
+            }
+        );
+        trail.colorGradient = gradient;
+    }
+
+    private static void AddPlayerEnergyParticles(Transform parent, Vector3 localPosition, float radius, Color color)
+    {
+        GameObject node = new GameObject("Player Energy Field");
+        node.SetActive(false);
+        node.transform.SetParent(parent, false);
+        node.transform.localPosition = localPosition;
+
+        ParticleSystem particles = node.AddComponent<ParticleSystem>();
+        ParticleSystem.MainModule main = particles.main;
+        main.loop = true;
+        main.duration = 1.1f;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.35f, 0.75f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(0.8f, 2.6f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.18f, 0.58f);
+        main.startColor = new ParticleSystem.MinMaxGradient(color * 0.55f, Color.white);
+        main.simulationSpace = ParticleSystemSimulationSpace.Local;
+        main.maxParticles = 80;
+
+        ParticleSystem.EmissionModule emission = particles.emission;
+        emission.rateOverTime = 34f;
+
+        ParticleSystem.ShapeModule shape = particles.shape;
+        shape.shapeType = ParticleSystemShapeType.Sphere;
+        shape.radius = radius;
+        shape.randomDirectionAmount = 0.35f;
+
+        ParticleSystem.ColorOverLifetimeModule colorOverLifetime = particles.colorOverLifetime;
+        colorOverLifetime.enabled = true;
+        Gradient gradient = new Gradient();
+        gradient.SetKeys(
+            new[]
+            {
+                new GradientColorKey(color * 0.6f, 0f),
+                new GradientColorKey(Color.white, 0.22f),
+                new GradientColorKey(color * 0.25f, 1f)
+            },
+            new[]
+            {
+                new GradientAlphaKey(0f, 0f),
+                new GradientAlphaKey(0.42f, 0.22f),
+                new GradientAlphaKey(0f, 1f)
+            }
+        );
+        colorOverLifetime.color = gradient;
+
+        ParticleSystemRenderer renderer = particles.GetComponent<ParticleSystemRenderer>();
+        renderer.renderMode = ParticleSystemRenderMode.Billboard;
+        renderer.material = GetAdditiveParticleMaterial();
+
+        node.SetActive(true);
+        particles.Play();
     }
 
     public static void ApplyEnemyShipVisuals(GameObject ship)
     {
-        ApplyShipVisuals(ship, new Color(0.42f, 0.04f, 0.02f), new Color(1f, 0.12f, 0.03f), 1.4f, 38f, false);
+        ApplyShipVisuals(ship, new Color(0.5f, 0.025f, 0.01f), new Color(1f, 0.18f, 0.04f), 0.65f, 18f, false);
     }
 
     public static void ApplyBossGlow(GameObject boss)
@@ -80,26 +276,54 @@ public static class CombatEffects
     public static void SpawnExplosion(Vector3 position)
     {
         GameObject effect = CreateEffectRoot("ExplosionEffect", position, Quaternion.identity, 2.5f);
-        AddPointLight(effect, new Color(1f, 0.42f, 0.05f), 12f, 110f, 0.22f);
+        AddPointLight(effect, new Color(1f, 0.35f, 0.04f), 4.5f, 45f, 0.16f);
 
-        ParticleSystem flash = AddParticleSystem(effect, new Color(1f, 0.72f, 0.08f, 0.92f), 2.8f, 7.5f, 0.24f, 115, 5f);
+        ParticleSystem flash = AddParticleSystem(effect, new Color(1f, 0.52f, 0.08f, 0.62f), 1.4f, 3.8f, 0.18f, 58, 2.8f);
         ParticleSystem.MainModule flashMain = flash.main;
-        flashMain.startSpeed = new ParticleSystem.MinMaxCurve(45f, 105f);
+        flashMain.startSpeed = new ParticleSystem.MinMaxCurve(32f, 72f);
         flashMain.startRotation = new ParticleSystem.MinMaxCurve(0f, 6.28f);
 
-        ParticleSystem core = AddParticleSystem(effect, new Color(0.15f, 0.92f, 1f, 0.9f), 1.8f, 4.6f, 0.28f, 56, 1.4f);
+        ParticleSystem core = AddParticleSystem(effect, new Color(0.15f, 0.75f, 1f, 0.45f), 0.9f, 2.4f, 0.22f, 32, 0.9f);
         ParticleSystem.MainModule coreMain = core.main;
-        coreMain.startSpeed = new ParticleSystem.MinMaxCurve(10f, 28f);
+        coreMain.startSpeed = new ParticleSystem.MinMaxCurve(8f, 20f);
 
-        ParticleSystem sparks = AddParticleSystem(effect, new Color(1f, 0.18f, 0.02f, 0.95f), 0.9f, 2.4f, 0.75f, 180, 4f);
+        ParticleSystem sparks = AddParticleSystem(effect, new Color(1f, 0.18f, 0.02f, 0.7f), 0.45f, 1.4f, 0.62f, 110, 2.6f);
         ParticleSystem.MainModule sparksMain = sparks.main;
-        sparksMain.startSpeed = new ParticleSystem.MinMaxCurve(72f, 170f);
+        sparksMain.startSpeed = new ParticleSystem.MinMaxCurve(52f, 125f);
         sparksMain.gravityModifier = 0.15f;
 
-        ParticleSystem smoke = AddParticleSystem(effect, new Color(0.26f, 0.25f, 0.28f, 0.34f), 4.5f, 12f, 1.25f, 95, 8f);
+        ParticleSystem smoke = AddParticleSystem(effect, new Color(0.22f, 0.21f, 0.24f, 0.26f), 2.8f, 7.5f, 1.1f, 60, 5.5f);
         ParticleSystem.MainModule smokeMain = smoke.main;
-        smokeMain.startSpeed = new ParticleSystem.MinMaxCurve(9f, 22f);
+        smokeMain.startSpeed = new ParticleSystem.MinMaxCurve(7f, 16f);
         smokeMain.simulationSpace = ParticleSystemSimulationSpace.World;
+    }
+
+    public static void SpawnBossExplosion(Vector3 position)
+    {
+        GameObject effect = CreateEffectRoot("BossExplosionEffect", position, Quaternion.identity, 3.4f);
+        AddPointLight(effect, new Color(1f, 0.28f, 0.04f), 8f, 82f, 0.28f);
+
+        ParticleSystem flash = AddParticleSystem(effect, new Color(1f, 0.36f, 0.05f, 0.78f), 3.2f, 8.5f, 0.28f, 120, 6f);
+        ParticleSystem.MainModule flashMain = flash.main;
+        flashMain.startSpeed = new ParticleSystem.MinMaxCurve(42f, 95f);
+        flashMain.startRotation = new ParticleSystem.MinMaxCurve(0f, 6.28f);
+
+        ParticleSystem core = AddParticleSystem(effect, new Color(1f, 0.85f, 0.32f, 0.55f), 1.8f, 4.6f, 0.22f, 65, 3.2f);
+        ParticleSystem.MainModule coreMain = core.main;
+        coreMain.startSpeed = new ParticleSystem.MinMaxCurve(14f, 34f);
+
+        ParticleSystem sparks = AddParticleSystem(effect, new Color(1f, 0.12f, 0.02f, 0.8f), 0.65f, 2.2f, 0.9f, 230, 7f);
+        ParticleSystem.MainModule sparksMain = sparks.main;
+        sparksMain.startSpeed = new ParticleSystem.MinMaxCurve(85f, 190f);
+        sparksMain.gravityModifier = 0.08f;
+
+        ParticleSystem smoke = AddParticleSystem(effect, new Color(0.16f, 0.13f, 0.12f, 0.42f), 6f, 16f, 1.9f, 130, 11f);
+        ParticleSystem.MainModule smokeMain = smoke.main;
+        smokeMain.startSpeed = new ParticleSystem.MinMaxCurve(12f, 30f);
+        smokeMain.simulationSpace = ParticleSystemSimulationSpace.World;
+
+        SpawnShockwave(position, new Color(1f, 0.18f, 0.04f, 0.34f), 42f, 0.52f);
+        ShakeMainCamera(0.42f, 0.32f);
     }
 
     private static Vector3 EstimatePlayerEngineLocalPosition(Transform root, Transform firePoint)
@@ -108,7 +332,7 @@ public static class CombatEffects
         {
             Vector3 localFirePoint = root.InverseTransformPoint(firePoint.position);
             Vector3 localDirection = localFirePoint.sqrMagnitude > 0.001f ? -localFirePoint.normalized : Vector3.back;
-            float distance = Mathf.Max(localFirePoint.magnitude * 0.65f, 6f);
+            float distance = Mathf.Max(localFirePoint.magnitude * 0.96f, 8.5f);
             return localDirection * distance;
         }
 
@@ -135,21 +359,39 @@ public static class CombatEffects
         return Vector3.back;
     }
 
-    private static ParticleSystem CreatePlayerEngineJetParticle(Transform parent, Color color, float minSize, float maxSize, float minSpeed, float maxSpeed, float rate, float lifetime, float angle)
+    private static ParticleSystem CreateRocketEnginePlume(
+        Transform parent,
+        string name,
+        Color startColor,
+        Color midColor,
+        Color endColor,
+        float minSize,
+        float maxSize,
+        float minSpeed,
+        float maxSpeed,
+        float rate,
+        float minLifetime,
+        float maxLifetime,
+        float angle,
+        float radius,
+        int maxParticles,
+        bool stretch)
     {
-        GameObject node = new GameObject("Jet Particles");
+        GameObject node = new GameObject(name);
         node.SetActive(false);
         node.transform.SetParent(parent, false);
 
         ParticleSystem particles = node.AddComponent<ParticleSystem>();
         ParticleSystem.MainModule main = particles.main;
         main.loop = true;
-        main.duration = 0.7f;
-        main.startLifetime = new ParticleSystem.MinMaxCurve(lifetime * 0.75f, lifetime);
+        main.duration = 0.55f;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(minLifetime, maxLifetime);
         main.startSpeed = new ParticleSystem.MinMaxCurve(minSpeed, maxSpeed);
         main.startSize = new ParticleSystem.MinMaxCurve(minSize, maxSize);
-        main.startColor = color;
+        main.startColor = Color.white;
         main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.maxParticles = maxParticles;
+        main.scalingMode = ParticleSystemScalingMode.Hierarchy;
 
         ParticleSystem.EmissionModule emission = particles.emission;
         emission.rateOverTime = rate;
@@ -157,13 +399,132 @@ public static class CombatEffects
         ParticleSystem.ShapeModule shape = particles.shape;
         shape.shapeType = ParticleSystemShapeType.Cone;
         shape.angle = angle;
-        shape.radius = 0.32f;
+        shape.radius = radius;
+        shape.randomDirectionAmount = 0.035f;
+
+        ParticleSystem.VelocityOverLifetimeModule velocity = particles.velocityOverLifetime;
+        velocity.enabled = true;
+        velocity.space = ParticleSystemSimulationSpace.Local;
+        velocity.z = new ParticleSystem.MinMaxCurve(0f, 16f);
+        velocity.x = new ParticleSystem.MinMaxCurve(-0.55f, 0.55f);
+        velocity.y = new ParticleSystem.MinMaxCurve(-0.25f, 0.25f);
+
+        ParticleSystem.SizeOverLifetimeModule sizeOverLifetime = particles.sizeOverLifetime;
+        sizeOverLifetime.enabled = true;
+        sizeOverLifetime.size = new ParticleSystem.MinMaxCurve(
+            1f,
+            new AnimationCurve(
+                new Keyframe(0f, 0.38f),
+                new Keyframe(0.18f, 0.95f),
+                new Keyframe(0.64f, 0.72f),
+                new Keyframe(1f, 0.06f)));
+
+        ParticleSystem.ColorOverLifetimeModule colorOverLifetime = particles.colorOverLifetime;
+        colorOverLifetime.enabled = true;
+        Gradient gradient = new Gradient();
+        gradient.SetKeys(
+            new[]
+            {
+                new GradientColorKey(startColor, 0f),
+                new GradientColorKey(midColor, 0.28f),
+                new GradientColorKey(endColor, 1f)
+            },
+            new[]
+            {
+                new GradientAlphaKey(startColor.a, 0f),
+                new GradientAlphaKey(midColor.a, 0.42f),
+                new GradientAlphaKey(0f, 1f)
+            }
+        );
+        colorOverLifetime.color = gradient;
+
+        ParticleSystem.NoiseModule noise = particles.noise;
+        noise.enabled = true;
+        noise.strength = stretch ? 0.18f : 0.42f;
+        noise.frequency = 1.15f;
+        noise.scrollSpeed = 1.25f;
+        noise.damping = true;
+
+        ParticleSystemRenderer renderer = particles.GetComponent<ParticleSystemRenderer>();
+        renderer.renderMode = ParticleSystemRenderMode.Billboard;
+        renderer.lengthScale = 1f;
+        renderer.velocityScale = 0f;
+        renderer.material = GetAdditiveParticleMaterial();
+        renderer.sortingOrder = 5;
+
+        node.SetActive(true);
+        particles.Play();
+        return particles;
+    }
+
+    private static ParticleSystem CreateRocketEngineSmoke(Transform parent)
+    {
+        GameObject node = new GameObject("Rocket Exhaust Smoke");
+        node.SetActive(false);
+        node.transform.SetParent(parent, false);
+
+        ParticleSystem particles = node.AddComponent<ParticleSystem>();
+        ParticleSystem.MainModule main = particles.main;
+        main.loop = true;
+        main.duration = 1.4f;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.55f, 1.05f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(10f, 24f);
+        main.startSize = new ParticleSystem.MinMaxCurve(1.1f, 2.8f);
+        main.startColor = new ParticleSystem.MinMaxGradient(
+            new Color(0.18f, 0.2f, 0.22f, 0.18f),
+            new Color(0.42f, 0.34f, 0.28f, 0.11f));
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.maxParticles = 90;
+
+        ParticleSystem.EmissionModule emission = particles.emission;
+        emission.rateOverTime = 16f;
+
+        ParticleSystem.ShapeModule shape = particles.shape;
+        shape.shapeType = ParticleSystemShapeType.Cone;
+        shape.angle = 11f;
+        shape.radius = 1.1f;
+        shape.randomDirectionAmount = 0.12f;
+
+        ParticleSystem.SizeOverLifetimeModule sizeOverLifetime = particles.sizeOverLifetime;
+        sizeOverLifetime.enabled = true;
+        sizeOverLifetime.size = new ParticleSystem.MinMaxCurve(
+            1f,
+            new AnimationCurve(
+                new Keyframe(0f, 0.22f),
+                new Keyframe(0.45f, 0.9f),
+                new Keyframe(1f, 1.25f)));
+
+        ParticleSystem.ColorOverLifetimeModule colorOverLifetime = particles.colorOverLifetime;
+        colorOverLifetime.enabled = true;
+        Gradient gradient = new Gradient();
+        gradient.SetKeys(
+            new[]
+            {
+                new GradientColorKey(new Color(0.6f, 0.58f, 0.55f), 0f),
+                new GradientColorKey(new Color(0.2f, 0.22f, 0.25f), 1f)
+            },
+            new[]
+            {
+                new GradientAlphaKey(0.05f, 0f),
+                new GradientAlphaKey(0.11f, 0.24f),
+                new GradientAlphaKey(0f, 1f)
+            }
+        );
+        colorOverLifetime.color = gradient;
+
+        ParticleSystem.NoiseModule noise = particles.noise;
+        noise.enabled = true;
+        noise.strength = 1.4f;
+        noise.frequency = 0.62f;
+        noise.scrollSpeed = 0.55f;
 
         ParticleSystemRenderer renderer = particles.GetComponent<ParticleSystemRenderer>();
         renderer.renderMode = ParticleSystemRenderMode.Billboard;
         renderer.material = GetAdditiveParticleMaterial();
+        renderer.sortingOrder = 3;
 
         node.SetActive(true);
+        particles.Play();
         return particles;
     }
 
@@ -201,7 +562,22 @@ public static class CombatEffects
         shape.radius = 2.2f;
     }
 
-    public static void AttachBulletTrail(GameObject bullet, Color color, float width, float lifetime)
+    public static void SpawnEnemyMuzzleFlash(Vector3 position, Quaternion rotation)
+    {
+        GameObject effect = CreateEffectRoot("EnemyMuzzleFlash", position, rotation, 0.24f);
+        AddPointLight(effect, new Color(0.95f, 0.12f, 0.04f), 0.9f, 16f, 0.06f);
+
+        ParticleSystem flash = AddParticleSystem(effect, new Color(0.95f, 0.16f, 0.04f, 0.55f), 0.45f, 1.35f, 0.1f, 12, 0.8f);
+        ParticleSystem.MainModule main = flash.main;
+        main.startSpeed = new ParticleSystem.MinMaxCurve(24f, 52f);
+
+        ParticleSystem.ShapeModule shape = flash.shape;
+        shape.shapeType = ParticleSystemShapeType.Cone;
+        shape.angle = 11f;
+        shape.radius = 0.75f;
+    }
+
+    public static void AttachBulletTrail(GameObject bullet, Color color, float width, float lifetime, float headColorBlend = 0.55f, float alphaMultiplier = 1f)
     {
         if (bullet == null || bullet.GetComponent<TrailRenderer>() != null)
             return;
@@ -220,14 +596,14 @@ public static class CombatEffects
         gradient.SetKeys(
             new[]
             {
-                new GradientColorKey(Color.white, 0f),
+                new GradientColorKey(Color.Lerp(Color.white, color, Mathf.Clamp01(headColorBlend)), 0f),
                 new GradientColorKey(color, 0.35f),
-                new GradientColorKey(color * 0.4f, 1f)
+                new GradientColorKey(color * 0.25f, 1f)
             },
             new[]
             {
-                new GradientAlphaKey(1f, 0f),
-                new GradientAlphaKey(0.75f, 0.35f),
+                new GradientAlphaKey(0.72f * alphaMultiplier, 0f),
+                new GradientAlphaKey(0.45f * alphaMultiplier, 0.35f),
                 new GradientAlphaKey(0f, 1f)
             }
         );
@@ -315,7 +691,9 @@ public static class CombatEffects
             Material[] materials = renderer.materials;
             foreach (Material material in materials)
             {
-                TuneExistingShipMaterial(material, tintColor, glowColor);
+                float emissionStrength = isPlayer ? 0.09f : 0.24f;
+                float tintBlend = isPlayer ? 0.18f : 0.24f;
+                TuneExistingShipMaterial(material, tintColor, glowColor, emissionStrength, tintBlend);
             }
         }
 
@@ -324,24 +702,24 @@ public static class CombatEffects
         AddTechAccents(ship.transform, glowColor, isPlayer);
     }
 
-    private static void TuneExistingShipMaterial(Material material, Color tintColor, Color glowColor)
+    private static void TuneExistingShipMaterial(Material material, Color tintColor, Color glowColor, float emissionStrength, float tintBlend)
     {
         if (material == null)
             return;
 
         if (material.HasProperty("_Color"))
         {
-            material.color = Color.Lerp(material.color, tintColor, 0.18f);
+            material.color = Color.Lerp(material.color, tintColor, tintBlend);
         }
         if (material.HasProperty("_BaseColor"))
         {
             Color baseColor = material.GetColor("_BaseColor");
-            material.SetColor("_BaseColor", Color.Lerp(baseColor, tintColor, 0.18f));
+            material.SetColor("_BaseColor", Color.Lerp(baseColor, tintColor, tintBlend));
         }
         if (material.HasProperty("_EmissionColor"))
         {
             material.EnableKeyword("_EMISSION");
-            material.SetColor("_EmissionColor", glowColor * 0.18f);
+            material.SetColor("_EmissionColor", glowColor * emissionStrength);
         }
         if (material.HasProperty("_Metallic"))
         {
@@ -462,8 +840,8 @@ public static class CombatEffects
         Light light = node.AddComponent<Light>();
         light.type = LightType.Point;
         light.color = color;
-        light.intensity = isPlayer ? 1.4f : 1.2f;
-        light.range = isPlayer ? 26f : 22f;
+        light.intensity = isPlayer ? 1.4f : 0.55f;
+        light.range = isPlayer ? 26f : 13f;
 
         ParticleSystem flame = CreateEngineParticle(node.transform, color, isPlayer);
         ParticleSystem smoke = CreateEngineSmoke(node.transform, isPlayer);
@@ -502,19 +880,21 @@ public static class CombatEffects
         ParticleSystem.MainModule main = particles.main;
         main.loop = true;
         main.duration = 0.6f;
-        main.startLifetime = isPlayer ? 0.16f : 0.13f;
-        main.startSpeed = isPlayer ? new ParticleSystem.MinMaxCurve(12f, 26f) : new ParticleSystem.MinMaxCurve(10f, 22f);
-        main.startSize = isPlayer ? new ParticleSystem.MinMaxCurve(0.55f, 1.7f) : new ParticleSystem.MinMaxCurve(0.45f, 1.3f);
-        main.startColor = new ParticleSystem.MinMaxGradient(Color.white, color);
+        main.startLifetime = isPlayer ? 0.16f : 0.19f;
+        main.startSpeed = isPlayer ? new ParticleSystem.MinMaxCurve(12f, 26f) : new ParticleSystem.MinMaxCurve(12f, 28f);
+        main.startSize = isPlayer ? new ParticleSystem.MinMaxCurve(0.55f, 1.7f) : new ParticleSystem.MinMaxCurve(0.38f, 1.05f);
+        main.startColor = isPlayer
+            ? new ParticleSystem.MinMaxGradient(Color.white, color)
+            : new ParticleSystem.MinMaxGradient(Color.Lerp(color, Color.white, 0.18f), color * 0.32f);
         main.simulationSpace = ParticleSystemSimulationSpace.World;
 
         ParticleSystem.EmissionModule emission = particles.emission;
-        emission.rateOverTime = isPlayer ? 28f : 22f;
+        emission.rateOverTime = isPlayer ? 28f : 16f;
 
         ParticleSystem.ShapeModule shape = particles.shape;
         shape.shapeType = ParticleSystemShapeType.Cone;
         shape.angle = 11f;
-        shape.radius = isPlayer ? 0.45f : 0.35f;
+        shape.radius = isPlayer ? 0.45f : 0.42f;
 
         ParticleSystemRenderer renderer = particles.GetComponent<ParticleSystemRenderer>();
         renderer.renderMode = ParticleSystemRenderMode.Billboard;
@@ -534,14 +914,14 @@ public static class CombatEffects
         ParticleSystem.MainModule main = particles.main;
         main.loop = true;
         main.duration = 0.8f;
-        main.startLifetime = 0.28f;
+        main.startLifetime = isPlayer ? 0.28f : 0.34f;
         main.startSpeed = new ParticleSystem.MinMaxCurve(5f, 12f);
-        main.startSize = isPlayer ? new ParticleSystem.MinMaxCurve(0.8f, 2.2f) : new ParticleSystem.MinMaxCurve(0.6f, 1.8f);
-        main.startColor = new Color(0.18f, 0.22f, 0.26f, 0.14f);
+        main.startSize = isPlayer ? new ParticleSystem.MinMaxCurve(0.8f, 2.2f) : new ParticleSystem.MinMaxCurve(0.7f, 2.05f);
+        main.startColor = isPlayer ? new Color(0.18f, 0.22f, 0.26f, 0.14f) : new Color(0.24f, 0.08f, 0.04f, 0.1f);
         main.simulationSpace = ParticleSystemSimulationSpace.World;
 
         ParticleSystem.EmissionModule emission = particles.emission;
-        emission.rateOverTime = isPlayer ? 5f : 4f;
+        emission.rateOverTime = isPlayer ? 5f : 5f;
 
         ParticleSystem.ShapeModule shape = particles.shape;
         shape.shapeType = ParticleSystemShapeType.Cone;
@@ -574,12 +954,23 @@ public static class CombatEffects
         float y = bounds.center.y + height * 0.38f;
 
         Material material = GetAccentMaterial(glowColor, isPlayer);
-        AddAccentCube(group.transform, material, new Vector3(bounds.center.x, y, bounds.center.z + depth * 0.08f), new Vector3(width * 0.08f, height * 0.035f, depth * 0.55f));
-        AddAccentCube(group.transform, material, new Vector3(bounds.center.x - width * 0.27f, y, bounds.center.z - depth * 0.03f), new Vector3(width * 0.18f, height * 0.03f, depth * 0.08f));
-        AddAccentCube(group.transform, material, new Vector3(bounds.center.x + width * 0.27f, y, bounds.center.z - depth * 0.03f), new Vector3(width * 0.18f, height * 0.03f, depth * 0.08f));
+        if (isPlayer)
+        {
+            AddAccentCube(group.transform, material, new Vector3(bounds.center.x, y, bounds.center.z + depth * 0.08f), new Vector3(width * 0.08f, height * 0.035f, depth * 0.55f));
+            AddAccentCube(group.transform, material, new Vector3(bounds.center.x - width * 0.27f, y, bounds.center.z - depth * 0.03f), new Vector3(width * 0.18f, height * 0.03f, depth * 0.08f));
+            AddAccentCube(group.transform, material, new Vector3(bounds.center.x + width * 0.27f, y, bounds.center.z - depth * 0.03f), new Vector3(width * 0.18f, height * 0.03f, depth * 0.08f));
 
-        AddAccentBeacon(group.transform, material, glowColor, new Vector3(bounds.center.x - width * 0.42f, y, bounds.center.z + depth * 0.12f), Mathf.Max(width * 0.035f, 0.8f));
-        AddAccentBeacon(group.transform, material, glowColor, new Vector3(bounds.center.x + width * 0.42f, y, bounds.center.z + depth * 0.12f), Mathf.Max(width * 0.035f, 0.8f));
+            AddAccentBeacon(group.transform, material, glowColor, new Vector3(bounds.center.x - width * 0.42f, y, bounds.center.z + depth * 0.12f), Mathf.Max(width * 0.035f, 0.8f));
+            AddAccentBeacon(group.transform, material, glowColor, new Vector3(bounds.center.x + width * 0.42f, y, bounds.center.z + depth * 0.12f), Mathf.Max(width * 0.035f, 0.8f));
+            return;
+        }
+
+        AddAccentCube(group.transform, material, new Vector3(bounds.center.x, y, bounds.center.z + depth * 0.12f), new Vector3(width * 0.055f, height * 0.035f, depth * 0.48f));
+        AddAccentCube(group.transform, material, new Vector3(bounds.center.x - width * 0.26f, y, bounds.center.z - depth * 0.02f), new Vector3(width * 0.14f, height * 0.03f, depth * 0.07f));
+        AddAccentCube(group.transform, material, new Vector3(bounds.center.x + width * 0.26f, y, bounds.center.z - depth * 0.02f), new Vector3(width * 0.14f, height * 0.03f, depth * 0.07f));
+
+        AddAccentBeacon(group.transform, material, glowColor, new Vector3(bounds.center.x - width * 0.38f, y, bounds.center.z + depth * 0.18f), Mathf.Max(width * 0.026f, 0.42f));
+        AddAccentBeacon(group.transform, material, glowColor, new Vector3(bounds.center.x + width * 0.38f, y, bounds.center.z + depth * 0.18f), Mathf.Max(width * 0.026f, 0.42f));
     }
 
     private static bool TryGetLocalBounds(Transform root, out Bounds localBounds)
@@ -640,8 +1031,9 @@ public static class CombatEffects
         Light light = sphere.AddComponent<Light>();
         light.type = LightType.Point;
         light.color = color;
-        light.intensity = 0.9f;
-        light.range = size * 8f;
+        bool isEnemyAccent = material == enemyAccentMaterial;
+        light.intensity = isEnemyAccent ? 0.32f : 0.9f;
+        light.range = size * (isEnemyAccent ? 4.2f : 8f);
     }
 
     private static GameObject CreateEffectRoot(string name, Vector3 position, Quaternion rotation, float destroyDelay)
@@ -650,6 +1042,78 @@ public static class CombatEffects
         effect.transform.SetPositionAndRotation(position, rotation);
         Object.Destroy(effect, destroyDelay);
         return effect;
+    }
+
+    private static void SpawnShockwave(Vector3 position, Color color, float maxScale, float duration)
+    {
+        GameObject sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        sphere.name = "Boss Explosion Shockwave";
+        sphere.transform.position = position;
+        sphere.transform.localScale = Vector3.one * 0.1f;
+        Object.Destroy(sphere.GetComponent<Collider>());
+
+        Material material = CreateTransparentMaterial(color);
+        Renderer renderer = sphere.GetComponent<Renderer>();
+        renderer.material = material;
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        renderer.receiveShadows = false;
+
+        BossShockwaveAnimator animator = sphere.AddComponent<BossShockwaveAnimator>();
+        animator.Initialize(material, color, maxScale, duration);
+    }
+
+    private static Material CreateTransparentMaterial(Color color)
+    {
+        Shader shader = Shader.Find("Standard");
+        if (shader == null)
+        {
+            shader = Shader.Find("Sprites/Default");
+        }
+
+        Material material = new Material(shader)
+        {
+            name = "Runtime_BossExplosion_Shockwave"
+        };
+
+        if (material.HasProperty("_Color"))
+        {
+            material.SetColor("_Color", color);
+        }
+        if (material.HasProperty("_Mode"))
+        {
+            material.SetFloat("_Mode", 3f);
+        }
+        if (material.HasProperty("_SrcBlend"))
+        {
+            material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        }
+        if (material.HasProperty("_DstBlend"))
+        {
+            material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        }
+        if (material.HasProperty("_ZWrite"))
+        {
+            material.SetInt("_ZWrite", 0);
+        }
+        material.DisableKeyword("_ALPHATEST_ON");
+        material.EnableKeyword("_ALPHABLEND_ON");
+        material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        material.renderQueue = 3000;
+        return material;
+    }
+
+    private static void ShakeMainCamera(float intensity, float duration)
+    {
+        Camera camera = Camera.main;
+        if (camera == null)
+            return;
+
+        BossCameraShake shake = camera.GetComponent<BossCameraShake>();
+        if (shake == null)
+        {
+            shake = camera.gameObject.AddComponent<BossCameraShake>();
+        }
+        shake.Play(intensity, duration);
     }
 
     private static ParticleSystem AddParticleSystem(GameObject parent, Color color, float minSize, float maxSize, float lifetime, int burstCount, float radius)
@@ -809,12 +1273,12 @@ public static class CombatEffects
 
         if (material.HasProperty("_Color"))
         {
-            material.SetColor("_Color", color * 0.75f);
+            material.SetColor("_Color", color * (isPlayer ? 0.75f : 0.55f));
         }
         if (material.HasProperty("_EmissionColor"))
         {
             material.EnableKeyword("_EMISSION");
-            material.SetColor("_EmissionColor", color * 1.8f);
+            material.SetColor("_EmissionColor", color * (isPlayer ? 1.8f : 0.9f));
         }
         if (material.HasProperty("_Metallic"))
         {
@@ -841,5 +1305,150 @@ public static class CombatEffects
         light.intensity = intensity;
         light.range = range;
         Object.Destroy(light, lifetime);
+    }
+}
+
+public class BossShockwaveAnimator : MonoBehaviour
+{
+    private Material material;
+    private Color color;
+    private float maxScale;
+    private float duration;
+    private float elapsed;
+
+    public void Initialize(Material material, Color color, float maxScale, float duration)
+    {
+        this.material = material;
+        this.color = color;
+        this.maxScale = Mathf.Max(1f, maxScale);
+        this.duration = Mathf.Max(0.05f, duration);
+    }
+
+    void Update()
+    {
+        elapsed += Time.deltaTime;
+        float progress = Mathf.Clamp01(elapsed / duration);
+        float eased = 1f - (1f - progress) * (1f - progress);
+        transform.localScale = Vector3.one * Mathf.Lerp(0.1f, maxScale, eased);
+
+        if (material != null && material.HasProperty("_Color"))
+        {
+            Color faded = color;
+            faded.a = color.a * (1f - progress);
+            material.SetColor("_Color", faded);
+        }
+
+        if (progress >= 1f)
+        {
+            if (material != null)
+            {
+                Destroy(material);
+            }
+            Destroy(gameObject);
+        }
+    }
+}
+
+public class BossCameraShake : MonoBehaviour
+{
+    private Vector3 originalLocalPosition;
+    private float intensity;
+    private float duration;
+    private float elapsed;
+    private bool shaking;
+
+    public void Play(float intensity, float duration)
+    {
+        if (!shaking)
+        {
+            originalLocalPosition = transform.localPosition;
+        }
+
+        this.intensity = Mathf.Max(this.intensity, intensity);
+        this.duration = Mathf.Max(0.05f, duration);
+        elapsed = 0f;
+        shaking = true;
+    }
+
+    void LateUpdate()
+    {
+        if (!shaking)
+            return;
+
+        elapsed += Time.deltaTime;
+        float progress = Mathf.Clamp01(elapsed / duration);
+        float decay = 1f - progress;
+        Vector3 offset = Random.insideUnitSphere * intensity * decay;
+        offset.z = 0f;
+        transform.localPosition = originalLocalPosition + offset;
+
+        if (progress >= 1f)
+        {
+            transform.localPosition = originalLocalPosition;
+            shaking = false;
+            intensity = 0f;
+        }
+    }
+}
+
+public class PlayerHeroPulse : MonoBehaviour
+{
+    private Light pulseLight;
+    private float minIntensity;
+    private float maxIntensity;
+    private float speed;
+    private float phase;
+
+    public void Initialize(Light light, float minIntensity, float maxIntensity, float speed)
+    {
+        pulseLight = light;
+        this.minIntensity = Mathf.Max(0f, minIntensity);
+        this.maxIntensity = Mathf.Max(this.minIntensity, maxIntensity);
+        this.speed = Mathf.Max(0.1f, speed);
+        phase = Random.value * Mathf.PI * 2f;
+    }
+
+    void Update()
+    {
+        if (pulseLight != null)
+        {
+            float t = (Mathf.Sin(Time.time * speed + phase) + 1f) * 0.5f;
+            pulseLight.intensity = Mathf.Lerp(minIntensity, maxIntensity, t);
+        }
+
+    }
+}
+
+public class PlayerEnginePulse : MonoBehaviour
+{
+    private Light engineLight;
+    private float minIntensity;
+    private float maxIntensity;
+    private float speed;
+    private float minRange;
+    private float maxRange;
+    private float phase;
+
+    public void Initialize(Light light, float minIntensity, float maxIntensity, float speed, float minRange, float maxRange)
+    {
+        engineLight = light;
+        this.minIntensity = Mathf.Max(0f, minIntensity);
+        this.maxIntensity = Mathf.Max(this.minIntensity, maxIntensity);
+        this.speed = Mathf.Max(0.1f, speed);
+        this.minRange = Mathf.Max(0f, minRange);
+        this.maxRange = Mathf.Max(this.minRange, maxRange);
+        phase = Random.value * Mathf.PI * 2f;
+    }
+
+    void Update()
+    {
+        if (engineLight == null)
+            return;
+
+        float basePulse = (Mathf.Sin(Time.time * speed + phase) + 1f) * 0.5f;
+        float microPulse = (Mathf.Sin(Time.time * speed * 2.7f + phase * 0.37f) + 1f) * 0.5f;
+        float pulse = Mathf.Clamp01(basePulse * 0.72f + microPulse * 0.28f);
+        engineLight.intensity = Mathf.Lerp(minIntensity, maxIntensity, pulse);
+        engineLight.range = Mathf.Lerp(minRange, maxRange, pulse);
     }
 }

@@ -5,6 +5,7 @@ using UnityEngine.UI;
 public class StartMenuTurn : MonoBehaviour
 {
     public string targetSceneName = "SetMenu1";
+    public string introVideoFileName = StartIntroVideoTransition.DefaultVideoFileName;
     public Button startButton;
     public Button quitButton;
 
@@ -30,7 +31,10 @@ public class StartMenuTurn : MonoBehaviour
 
         BloodManager.ResetGameState();
         Time.timeScale = 1f;
-        SceneManager.LoadScene(targetSceneName);
+        if (!StartIntroVideoTransition.PlayThenLoad(targetSceneName, introVideoFileName))
+        {
+            SceneManager.LoadScene(targetSceneName);
+        }
     }
 
     public void OnQuitButtonClick()

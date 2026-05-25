@@ -9,6 +9,8 @@ public class BulletLogic : MonoBehaviour
     public int healValue = 5;
     public bool grantsSkillCharge = true;
 
+    private bool hitApplied;
+
     void Start()
     {
         CombatEffects.AttachBulletTrail(gameObject, new Color(0.15f, 0.95f, 1f, 1f), 5f, 0.12f);
@@ -22,9 +24,13 @@ public class BulletLogic : MonoBehaviour
 
     void OnTriggerEnter(Collider other)
     {
+        if (hitApplied || other == null)
+            return;
+
         BossController boss = other.GetComponentInParent<BossController>();
         if (boss != null)
         {
+            hitApplied = true;
             Vector3 bossHitPosition = other.ClosestPoint(transform.position);
             boss.TakeDamage(1, bossHitPosition);
             Destroy(gameObject);
@@ -33,6 +39,8 @@ public class BulletLogic : MonoBehaviour
 
         if (!other.CompareTag("Enemy"))
             return;
+
+        hitApplied = true;
 
         Vector3 hitPosition = other.ClosestPoint(transform.position);
         CombatEffects.SpawnHit(hitPosition, -transform.forward);

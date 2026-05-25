@@ -15,10 +15,25 @@ public class NetworkPlayerSpawner : MonoBehaviour
             return;
         }
 
-        Vector3 spawnPosition = PhotonNetwork.LocalPlayer.ActorNumber % 2 == 1
+        int playerIndex = GetLocalPlayerIndex();
+        Vector3 spawnPosition = playerIndex == 0
             ? playerOneSpawn
             : playerTwoSpawn;
 
         PhotonNetwork.Instantiate(networkPlayerPrefabName, spawnPosition, Quaternion.identity);
+    }
+
+    private int GetLocalPlayerIndex()
+    {
+        int index = 0;
+        foreach (int actorNumber in PhotonNetwork.CurrentRoom.Players.Keys)
+        {
+            if (actorNumber < PhotonNetwork.LocalPlayer.ActorNumber)
+            {
+                index++;
+            }
+        }
+
+        return index;
     }
 }

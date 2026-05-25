@@ -1,3 +1,4 @@
+using System.Collections;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -99,10 +100,31 @@ public class BloodManager : MonoBehaviour
         {
             menuButton.gameObject.SetActive(true);
         }
+
+        if (NetworkCoopSession.ShouldReturnToLobby())
+        {
+            if (restartButton != null)
+            {
+                restartButton.gameObject.SetActive(false);
+            }
+
+            if (menuButton != null)
+            {
+                menuButton.gameObject.SetActive(false);
+            }
+
+            StartCoroutine(ReturnToCoopLobbyAfterDelay());
+        }
     }
 
     public void OnRestartClick()
     {
+        if (NetworkCoopSession.ShouldReturnToLobby())
+        {
+            ReturnToCoopLobby();
+            return;
+        }
+
         ResetGameState();
         Time.timeScale = 1f;
         if (AudioManager.Instance != null)
@@ -112,11 +134,33 @@ public class BloodManager : MonoBehaviour
 
     public void OnMenuClick()
     {
+        if (NetworkCoopSession.ShouldReturnToLobby())
+        {
+            ReturnToCoopLobby();
+            return;
+        }
+
         ResetGameState();
         Time.timeScale = 1f;
         if (AudioManager.Instance != null)
             AudioManager.Instance.ResumeBGM();
         SceneManager.LoadScene(menuSceneName);
+    }
+
+    private void ReturnToCoopLobby()
+    {
+        NetworkCoopSession.PrepareReturnToLobby();
+        ResetGameState();
+        Time.timeScale = 1f;
+        if (AudioManager.Instance != null)
+            AudioManager.Instance.ResumeBGM();
+        SceneManager.LoadScene(NetworkCoopSession.LobbySceneName);
+    }
+
+    private IEnumerator ReturnToCoopLobbyAfterDelay()
+    {
+        yield return new WaitForSecondsRealtime(2f);
+        ReturnToCoopLobby();
     }
 
     public static void ResetGameState()

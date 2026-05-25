@@ -76,8 +76,14 @@ public class PauseManager : MonoBehaviour
             HighScoreManager.Instance.TryUpdateHighScore(ScoreManager.score);
         }
 
+        bool isCoopGame = NetworkCoopSession.ShouldReturnToLobby();
+        if (isCoopGame)
+        {
+            NetworkCoopSession.PrepareReturnToLobby();
+        }
+
         BloodManager.ResetGameState();
-        SceneManager.LoadScene(menuSceneName);
+        SceneManager.LoadScene(isCoopGame ? NetworkCoopSession.LobbySceneName : menuSceneName);
     }
 
     void OnDestroy()

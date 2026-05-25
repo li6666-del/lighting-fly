@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: ThunderNebulaSkybox
+  m_Shader: {fileID: 4800000, guid: 91b9074c40124d1a802197581b720e82, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs: []
+    m_Ints: []
+    m_Floats:
+    - _CoreIntensity: 2.6
+    - _Exposure: 1.35
+    - _FlowSpeed: 0.45
+    - _LightningIntensity: 1.8
+    - _NebulaIntensity: 1.65
+    - _Rotation: 20
+    - _StarIntensity: 2.25
+    m_Colors:
+    - _BottomColor: {r: 0.005, g: 0.008, b: 0.025, a: 1}
+    - _HorizonColor: {r: 0.13, g: 0.045, b: 0.24, a: 1}
+    - _LightningColor: {r: 0.35, g: 0.9, b: 2.5, a: 1}
+    - _NebulaA: {r: 0.05, g: 0.95, b: 1.4, a: 1}
+    - _NebulaB: {r: 1.15, g: 0.08, b: 0.85, a: 1}
+    - _StarColor: {r: 0.9, g: 0.95, b: 1.25, a: 1}
+    - _TopColor: {r: 0.015, g: 0.035, b: 0.12, a: 1}
+  m_BuildTextureStacks: []

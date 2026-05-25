@@ -181,6 +181,40 @@ MonoBehaviour:
   networkBulletPrefabName: NetworkPlayerBullet
   firePoint: {fileID: 494118}
   fireRate: 0.2
+  killsPerCharge: 10
+  shieldDuration: 4
+  laserDuration: 2.8
+  laserRange: 520
+  laserRadius: 10
+  laserBossDamage: 3
+  laserBossDamageInterval: 0.08
+  laserEnemyScoreValue: 1
+  laserEnemyHealValue: 5
+  laserColor: {r: 0.2, g: 1, b: 0.85, a: 1}
+  laserColorIntensity: 5
+  laserStartWidth: 6
+  laserEndWidth: 3
+  laserHitMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  barrageBulletCount: 17
+  barrageWaves: 5
+  barrageWaveInterval: 0.06
+  barrageSpreadAngle: 100
+  barrageSpawnOffset: 10
+  voidCollapseDuration: 3
+  voidCollapseScanRange: 650
+  voidCollapseClusterRadius: 120
+  voidCollapseFallbackDistance: 260
+  voidCollapsePullRadius: 130
+  voidCollapsePullStrength: 260
+  voidCollapseExplosionRadius: 150
+  voidCollapseCoreKillRadius: 22
+  voidCollapseDamageInterval: 0.12
+  voidCollapseBossDamagePerTick: 1
+  voidCollapseBossFinalDamage: 5
+  voidCollapseEnemyScoreValue: 1
+  voidCollapseEnemyHealValue: 5
 --- !u!1 &1327321467682894196
 GameObject:
   m_ObjectHideFlags: 0

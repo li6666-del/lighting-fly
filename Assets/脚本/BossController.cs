@@ -1,4 +1,6 @@
 using TMPro;
+using Photon.Pun;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -22,6 +24,17 @@ public class BossController : MonoBehaviour
     public float muzzleOffset = 38f;
     public float attackOriginHeight = 12f;
 
+    [Header("Ultimate Laser")]
+    public bool enableUltimateLaser = true;
+    public float ultimateInitialDelay = 5f;
+    public float ultimateInterval = 9f;
+    public float ultimateChargeDuration = 2.2f;
+    public float ultimateLaserDuration = 1.45f;
+    public float ultimateLaserRange = 360f;
+    public float ultimateLaserRadius = 11f;
+    public int ultimateLaserDamage = 14;
+    public float ultimateDamageInterval = 0.28f;
+
     [Header("Collision")]
     public float colliderSizeMultiplier = 0.72f;
 
@@ -34,6 +47,11 @@ public class BossController : MonoBehaviour
     private TextMeshProUGUI hpText;
     private bool dead;
     private int uiSlot;
+    private BossChargeWarning ultimateChargeFx;
+    private LaserBeam ultimateLaser;
+    private Coroutine ultimateRoutine;
+    private bool isUsingUltimate;
+    private float nextUltimateTime;
 
     public void Initialize(EnemySpawner spawner, GameObject fallbackBulletPrefab, int healthUiSlot)
     {
@@ -59,6 +77,8 @@ public class BossController : MonoBehaviour
 
         EnsureCollisionSetup();
         CombatEffects.ApplyBossGlow(gameObject);
+        EnsureUltimateComponents();
+        nextUltimateTime = Time.time + Mathf.Max(1f, ultimateInitialDelay) + uiSlot * 1.25f;
         CreateHealthUi();
         UpdateHealthUi();
     }
@@ -76,14 +96,29 @@ public class BossController : MonoBehaviour
         if (dead)
             return;
 
-        MoveBoss();
-        TryShoot();
+        bool networkFollower = NetworkCoopGameRuntime.IsActive && !PhotonNetwork.IsMasterClient;
+
+        if (!isUsingUltimate && !networkFollower)
+        {
+            MoveBoss();
+        }
+        TryUltimate();
+        if (!isUsingUltimate && !networkFollower)
+        {
+            TryShoot();
+        }
     }
 
     public void TakeDamage(int damage, Vector3 hitPosition)
     {
         if (dead)
             return;
+
+        NetworkCoopBossIdentity networkBoss = GetComponent<NetworkCoopBossIdentity>();
+        if (NetworkCoopGameRuntime.ReportBossDamaged(networkBoss, damage, hitPosition))
+        {
+            return;
+        }
 
         hp -= Mathf.Max(1, damage);
         CombatEffects.SpawnHit(hitPosition, (hitPosition - transform.position).normalized);
@@ -93,6 +128,33 @@ public class BossController : MonoBehaviour
         {
             Die();
         }
+    }
+
+    public void ApplyNetworkHealth(int currentHp, int maxHpValue)
+    {
+        maxHp = Mathf.Max(1, maxHpValue);
+        hp = Mathf.Clamp(currentHp, 0, maxHp);
+
+        if (hpSlider != null)
+        {
+            hpSlider.maxValue = maxHp;
+        }
+
+        UpdateHealthUi();
+    }
+
+    public void DestroyNetworkBoss(Vector3 hitPosition)
+    {
+        if (dead)
+            return;
+
+        dead = true;
+        CancelUltimate();
+        hp = 0;
+        UpdateHealthUi();
+        SpawnDeathEffects(hitPosition);
+        DestroyHealthUi();
+        Destroy(gameObject);
     }
 
     void MoveBoss()
@@ -117,11 +179,180 @@ public class BossController : MonoBehaviour
         {
             Quaternion rotation = centerRotation * Quaternion.Euler(0f, startAngle + step * i, 0f);
             Vector3 position = origin + rotation * Vector3.forward * 8f;
+            if (NetworkCoopGameRuntime.SpawnEnemyBullet(position, rotation, bulletPrefab))
+                continue;
+
             Instantiate(bulletPrefab, position, rotation);
-            CombatEffects.SpawnMuzzleFlash(position, rotation);
+            CombatEffects.SpawnEnemyMuzzleFlash(position, rotation);
         }
 
         nextFireTime = Time.time + fireInterval;
+    }
+
+    void TryUltimate()
+    {
+        if (NetworkCoopGameRuntime.IsActive && !PhotonNetwork.IsMasterClient)
+            return;
+
+        if (!enableUltimateLaser || player == null || isUsingUltimate || Time.time < nextUltimateTime)
+            return;
+
+        if (ultimateRoutine != null)
+            return;
+
+        ultimateRoutine = StartCoroutine(UltimateLaserRoutine());
+    }
+
+    IEnumerator UltimateLaserRoutine()
+    {
+        isUsingUltimate = true;
+        nextFireTime = Time.time + ultimateChargeDuration + ultimateLaserDuration + fireInterval;
+
+        EnsureUltimateComponents();
+
+        Vector3 releasePosition = GetUltimateOrigin();
+        bool chargeComplete = false;
+        if (ultimateChargeFx != null)
+        {
+            ultimateChargeFx.orbLocalOffset = transform.InverseTransformPoint(releasePosition);
+            ultimateChargeFx.StartCharge(Mathf.Max(0.2f, ultimateChargeDuration), pos =>
+            {
+                releasePosition = pos;
+                chargeComplete = true;
+            });
+        }
+        else
+        {
+            yield return new WaitForSeconds(Mathf.Max(0.2f, ultimateChargeDuration));
+            chargeComplete = true;
+        }
+
+        while (!dead && !chargeComplete)
+        {
+            yield return null;
+        }
+
+        if (!dead)
+        {
+            yield return FireUltimateLaser(releasePosition);
+        }
+
+        nextUltimateTime = Time.time + Mathf.Max(2f, ultimateInterval);
+        isUsingUltimate = false;
+        ultimateRoutine = null;
+    }
+
+    IEnumerator FireUltimateLaser(Vector3 origin)
+    {
+        EnsureUltimateComponents();
+        if (ultimateLaser == null)
+            yield break;
+
+        Vector3 direction = player != null
+            ? (player.position - origin).normalized
+            : transform.forward;
+        if (direction.sqrMagnitude < 0.001f)
+        {
+            direction = Vector3.back;
+        }
+
+        ultimateLaser.transform.SetPositionAndRotation(origin, Quaternion.LookRotation(direction));
+        ultimateLaser.BeginFire();
+
+        float endTime = Time.time + Mathf.Max(0.1f, ultimateLaserDuration);
+        float nextDamageTime = 0f;
+
+        while (!dead && Time.time < endTime)
+        {
+            if (Time.time >= nextDamageTime)
+            {
+                DamagePlayerWithUltimate(origin, direction);
+                nextDamageTime = Time.time + Mathf.Max(0.05f, ultimateDamageInterval);
+            }
+
+            yield return null;
+        }
+
+        ultimateLaser.EndFire();
+    }
+
+    void DamagePlayerWithUltimate(Vector3 origin, Vector3 direction)
+    {
+        if (player == null)
+            return;
+
+        Vector3 toPlayer = player.position - origin;
+        float alongBeam = Vector3.Dot(toPlayer, direction);
+        if (alongBeam < 0f || alongBeam > ultimateLaserRange)
+            return;
+
+        Vector3 closestPoint = origin + direction * alongBeam;
+        float distance = Vector3.Distance(player.position, closestPoint);
+        if (distance > ultimateLaserRadius)
+            return;
+
+        Vector3 hitNormal = (player.position - closestPoint).sqrMagnitude > 0.001f
+            ? (player.position - closestPoint).normalized
+            : -direction;
+
+        if (NetworkCoopGameRuntime.IsActive && !PhotonNetwork.IsMasterClient)
+            return;
+
+        NetworkPlayerController networkPlayer = player.GetComponentInParent<NetworkPlayerController>();
+        bool blockedByShield = networkPlayer != null
+            ? networkPlayer.IsShieldActive
+            : PlayerSkill.Instance != null && PlayerSkill.Instance.IsShieldActive;
+
+        if (blockedByShield)
+        {
+            CombatEffects.SpawnHit(closestPoint, hitNormal);
+            return;
+        }
+
+        if (NetworkCoopGameRuntime.ReportPlayerDamaged(ultimateLaserDamage, closestPoint, hitNormal, false))
+            return;
+
+        CombatEffects.SpawnHit(closestPoint, hitNormal);
+        BloodManager.blood = Mathf.Max(0, BloodManager.blood - Mathf.Max(1, ultimateLaserDamage));
+    }
+
+    Vector3 GetUltimateOrigin()
+    {
+        return transform.position + Vector3.up * attackOriginHeight + Vector3.back * muzzleOffset;
+    }
+
+    void EnsureUltimateComponents()
+    {
+        if (ultimateChargeFx == null)
+        {
+            ultimateChargeFx = GetComponent<BossChargeWarning>();
+            if (ultimateChargeFx == null)
+            {
+                ultimateChargeFx = gameObject.AddComponent<BossChargeWarning>();
+            }
+
+            ultimateChargeFx.warningColor = new Color(1f, 0.08f, 0.03f, 1f);
+            ultimateChargeFx.colorIntensity = 2.6f;
+            ultimateChargeFx.maxRingRadius = 32f;
+            ultimateChargeFx.ringWidth = 0.75f;
+            ultimateChargeFx.orbMaxScale = 7f;
+            ultimateChargeFx.orbLocalOffset = transform.InverseTransformPoint(GetUltimateOrigin());
+        }
+
+        if (ultimateLaser == null)
+        {
+            GameObject laserObject = new GameObject("Boss Ultimate Laser");
+            ultimateLaser = laserObject.AddComponent<LaserBeam>();
+            ultimateLaser.beamColor = new Color(1f, 0.12f, 0.04f, 1f);
+            ultimateLaser.colorIntensity = 3.6f;
+            ultimateLaser.startWidth = 9f;
+            ultimateLaser.endWidth = 5f;
+            ultimateLaser.widthJitter = 0.28f;
+            ultimateLaser.maxDistance = ultimateLaserRange;
+            ultimateLaser.hitMask = 0;
+            ultimateLaser.spawnHitSparks = false;
+            ultimateLaser.RefreshAppearance();
+        }
     }
 
     void EnsureCollisionSetup()
@@ -273,8 +504,18 @@ public class BossController : MonoBehaviour
     {
         if (other.CompareTag("Player"))
         {
-            BloodManager.blood = 0;
+            if (NetworkCoopGameRuntime.IsActive && !PhotonNetwork.IsMasterClient)
+            {
+                return;
+            }
+
+            if (NetworkCoopGameRuntime.ReportPlayerCrashed(100, other.transform.position))
+            {
+                return;
+            }
+
             CombatEffects.SpawnExplosion(other.transform.position);
+            BloodManager.blood = 0;
         }
     }
 
@@ -282,29 +523,32 @@ public class BossController : MonoBehaviour
     {
         if (collision.gameObject.CompareTag("Player"))
         {
-            BloodManager.blood = 0;
+            if (NetworkCoopGameRuntime.IsActive && !PhotonNetwork.IsMasterClient)
+            {
+                return;
+            }
+
+            if (NetworkCoopGameRuntime.ReportPlayerCrashed(100, collision.transform.position))
+            {
+                return;
+            }
+
             CombatEffects.SpawnExplosion(collision.transform.position);
+            BloodManager.blood = 0;
         }
     }
 
     void Die()
     {
         dead = true;
+        CancelUltimate();
         if (scoreReward > 0)
         {
             ScoreManager.score += scoreReward;
         }
 
-        Vector3 center = transform.position;
-        CombatEffects.SpawnExplosion(center);
-        CombatEffects.SpawnExplosion(center + transform.right * 35f);
-        CombatEffects.SpawnExplosion(center - transform.right * 35f);
-        CombatEffects.SpawnExplosion(center + transform.forward * 24f);
-
-        if (hpSlider != null)
-        {
-            Destroy(hpSlider.gameObject);
-        }
+        SpawnDeathEffects(transform.position);
+        DestroyHealthUi();
 
         if (owner != null)
         {
@@ -316,9 +560,49 @@ public class BossController : MonoBehaviour
 
     void OnDestroy()
     {
+        CancelUltimate();
+        DestroyHealthUi();
+    }
+
+    void CancelUltimate()
+    {
+        if (ultimateRoutine != null)
+        {
+            StopCoroutine(ultimateRoutine);
+            ultimateRoutine = null;
+        }
+
+        isUsingUltimate = false;
+
+        if (ultimateChargeFx != null && ultimateChargeFx.IsCharging)
+        {
+            ultimateChargeFx.CancelCharge();
+        }
+
+        if (ultimateLaser != null)
+        {
+            ultimateLaser.EndFire();
+            Destroy(ultimateLaser.gameObject);
+            ultimateLaser = null;
+        }
+    }
+
+    void SpawnDeathEffects(Vector3 center)
+    {
+        CombatEffects.SpawnBossExplosion(center);
+        CombatEffects.SpawnExplosion(center + transform.right * 35f);
+        CombatEffects.SpawnExplosion(center - transform.right * 35f);
+        CombatEffects.SpawnExplosion(center + transform.forward * 24f);
+        CombatEffects.SpawnExplosion(center - transform.forward * 20f);
+    }
+
+    void DestroyHealthUi()
+    {
         if (hpSlider != null)
         {
             Destroy(hpSlider.gameObject);
+            hpSlider = null;
+            hpText = null;
         }
     }
 }
