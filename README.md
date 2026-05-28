@@ -63,6 +63,8 @@ Photon 配置文件位于：
 Assets/Photon/PhotonUnityNetworking/Resources/PhotonServerSettings.asset
 ```
 
+出于隐私与安全考虑，仓库中不保存 Photon AppId。需要运行联机模式时，请在 Unity 中打开 Photon 设置面板，填入自己的 Realtime AppId 后再本地运行。
+
 ## 关键脚本
 
 | 脚本 | 作用 |
