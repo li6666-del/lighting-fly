@@ -345,9 +345,9 @@ public class GameManager : MonoBehaviour
             return engineFlameMaterial;
 
         Shader shader = CombatEffects.GetAdditiveEffectShader();
-        if (shader == null)
+        if (!CombatEffects.IsRuntimeShaderUsable(shader))
         {
-            shader = Shader.Find("Sprites/Default");
+            shader = CombatEffects.FindRuntimeShader("Sprites/Default", "Unlit/Color");
         }
 
         engineFlameMaterial = new Material(shader)

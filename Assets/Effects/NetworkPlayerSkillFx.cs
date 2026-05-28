@@ -635,9 +635,7 @@ public class VoidSingularityFx : MonoBehaviour
 
     private Material CreateCoreMaterial()
     {
-        Shader shader = Shader.Find("Standard");
-        if (shader == null)
-            shader = Shader.Find("Unlit/Color");
+        Shader shader = CombatEffects.FindRuntimeShader("Standard", "Unlit/Color");
 
         Material material = new Material(shader) { name = "Runtime_Void_Black_Core" };
         if (material.HasProperty("_Color"))
@@ -654,9 +652,7 @@ public class VoidSingularityFx : MonoBehaviour
 
     private Material CreateShadowMaterial()
     {
-        Shader shader = Shader.Find("Standard");
-        if (shader == null)
-            shader = Shader.Find("Unlit/Color");
+        Shader shader = CombatEffects.FindRuntimeShader("Standard", "Unlit/Color");
 
         Material material = new Material(shader) { name = "Runtime_Void_Shadow_Field" };
         if (material.HasProperty("_Color"))
@@ -679,8 +675,8 @@ public class VoidSingularityFx : MonoBehaviour
     private static Material CreateAdditiveMaterial(Color color, string name)
     {
         Shader shader = CombatEffects.GetAdditiveEffectShader();
-        if (shader == null)
-            shader = Shader.Find("Sprites/Default");
+        if (!CombatEffects.IsRuntimeShaderUsable(shader))
+            shader = CombatEffects.FindRuntimeShader("Sprites/Default", "Unlit/Color");
 
         Material material = new Material(shader) { name = name };
         if (material.HasProperty("_Color"))
@@ -845,8 +841,8 @@ public class VoidCollapseWave : MonoBehaviour
     private static Material VoidSingularityFx_CreateAdditiveMaterial(Color color, string name)
     {
         Shader shader = CombatEffects.GetAdditiveEffectShader();
-        if (shader == null)
-            shader = Shader.Find("Sprites/Default");
+        if (!CombatEffects.IsRuntimeShaderUsable(shader))
+            shader = CombatEffects.FindRuntimeShader("Sprites/Default", "Unlit/Color");
 
         Material material = new Material(shader) { name = name };
         if (material.HasProperty("_Color"))
@@ -946,8 +942,8 @@ public class VoidCrushFx : MonoBehaviour
     private Material CreateMaterial()
     {
         Shader shader = CombatEffects.GetAdditiveEffectShader();
-        if (shader == null)
-            shader = Shader.Find("Sprites/Default");
+        if (!CombatEffects.IsRuntimeShaderUsable(shader))
+            shader = CombatEffects.FindRuntimeShader("Sprites/Default", "Unlit/Color");
         return new Material(shader) { name = "Runtime_Void_Crush" };
     }
 }
@@ -1064,9 +1060,7 @@ public class NetworkSkillShieldFx : MonoBehaviour
 
     private Material CreateTransparentMaterial()
     {
-        Shader shader = Shader.Find("Standard");
-        if (shader == null)
-            shader = Shader.Find("Unlit/Color");
+        Shader shader = CombatEffects.FindRuntimeShader("Standard", "Unlit/Color");
 
         Material material = new Material(shader) { name = "Runtime_Network_Skill_Shield" };
         if (material.HasProperty("_Color"))
@@ -1177,8 +1171,8 @@ public class NetworkSkillShieldFx : MonoBehaviour
     private Material CreateAdditiveMaterial(Color color)
     {
         Shader shader = CombatEffects.GetAdditiveEffectShader();
-        if (shader == null)
-            shader = Shader.Find("Sprites/Default");
+        if (!CombatEffects.IsRuntimeShaderUsable(shader))
+            shader = CombatEffects.FindRuntimeShader("Sprites/Default", "Unlit/Color");
 
         Material material = new Material(shader) { name = "Runtime_Network_Skill_Shield_Additive" };
         if (material.HasProperty("_Color"))

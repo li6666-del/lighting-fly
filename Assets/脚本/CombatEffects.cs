@@ -1108,11 +1108,7 @@ public static class CombatEffects
 
     private static Material CreateTransparentMaterial(Color color)
     {
-        Shader shader = Shader.Find("Standard");
-        if (shader == null)
-        {
-            shader = Shader.Find("Sprites/Default");
-        }
+        Shader shader = FindRuntimeShader("Standard", "Sprites/Default", "Unlit/Color");
 
         Material material = new Material(shader)
         {
@@ -1200,27 +1196,67 @@ public static class CombatEffects
 
     public static Shader GetAdditiveEffectShader()
     {
-        if (additiveEffectShader != null)
+        if (IsRuntimeShaderUsable(additiveEffectShader))
             return additiveEffectShader;
 
+        additiveEffectShader = null;
         Material preloadMaterial = Resources.Load<Material>("Preload_ThunderFlightAdditive");
-        if (preloadMaterial != null && preloadMaterial.shader != null)
+        if (preloadMaterial != null && IsRuntimeShaderUsable(preloadMaterial.shader))
         {
             additiveEffectShader = preloadMaterial.shader;
             return additiveEffectShader;
         }
 
-        additiveEffectShader = Shader.Find("Legacy Shaders/Particles/Additive");
-        if (additiveEffectShader == null)
-        {
-            additiveEffectShader = Shader.Find("Particles/Standard Unlit");
-        }
-        if (additiveEffectShader == null)
-        {
-            additiveEffectShader = Shader.Find("Sprites/Default");
-        }
+        additiveEffectShader = FindRuntimeShader(
+            "Legacy Shaders/Particles/Additive",
+            "Particles/Standard Unlit",
+            "Sprites/Default",
+            "Unlit/Color");
 
         return additiveEffectShader;
+    }
+
+    public static Shader FindRuntimeShader(params string[] shaderNames)
+    {
+        if (shaderNames != null)
+        {
+            for (int i = 0; i < shaderNames.Length; i++)
+            {
+                if (string.IsNullOrEmpty(shaderNames[i]))
+                    continue;
+
+                Shader shader = Shader.Find(shaderNames[i]);
+                if (IsRuntimeShaderUsable(shader))
+                    return shader;
+            }
+        }
+
+        string[] fallbackNames =
+        {
+            "Sprites/Default",
+            "Unlit/Color",
+            "Standard",
+            "Diffuse"
+        };
+
+        for (int i = 0; i < fallbackNames.Length; i++)
+        {
+            Shader shader = Shader.Find(fallbackNames[i]);
+            if (IsRuntimeShaderUsable(shader))
+                return shader;
+        }
+
+        return null;
+    }
+
+    public static bool IsRuntimeShaderUsable(Shader shader)
+    {
+        if (shader == null || !shader.isSupported)
+            return false;
+
+        string shaderName = shader.name;
+        return !string.IsNullOrEmpty(shaderName)
+            && !shaderName.StartsWith("Hidden/Internal", System.StringComparison.Ordinal);
     }
 
     private static Material GetAdditiveParticleMaterial()
@@ -1278,11 +1314,7 @@ public static class CombatEffects
         if (beamMetalMaterial != null)
             return beamMetalMaterial;
 
-        Shader shader = Shader.Find("Sprites/Default");
-        if (shader == null)
-        {
-            shader = Shader.Find("Unlit/Color");
-        }
+        Shader shader = FindRuntimeShader("Sprites/Default", "Unlit/Color");
 
         beamMetalMaterial = new Material(shader)
         {
@@ -1326,11 +1358,7 @@ public static class CombatEffects
             return enemyAccentMaterial;
         }
 
-        Shader shader = Shader.Find("Standard");
-        if (shader == null)
-        {
-            shader = Shader.Find("Unlit/Color");
-        }
+        Shader shader = FindRuntimeShader("Standard", "Unlit/Color");
 
         Material material = new Material(shader)
         {

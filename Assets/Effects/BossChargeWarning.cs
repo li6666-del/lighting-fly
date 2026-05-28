@@ -374,8 +374,7 @@ public class BossChargeWarning : MonoBehaviour
     /// </summary>
     private Material CreateOrbMaterial(Color hdrColor)
     {
-        Shader shader = Shader.Find("Standard");
-        if (shader == null) shader = Shader.Find("Sprites/Default");
+        Shader shader = CombatEffects.FindRuntimeShader("Standard", "Sprites/Default", "Unlit/Color");
 
         Material mat = new Material(shader) { name = "Runtime_ChargeOrb" };
         if (mat.HasProperty("_Color")) mat.SetColor("_Color", hdrColor);
@@ -399,7 +398,7 @@ public class BossChargeWarning : MonoBehaviour
     private Material CreateAdditiveMaterial(Color hdrColor)
     {
         Shader shader = CombatEffects.GetAdditiveEffectShader();
-        if (shader == null) shader = Shader.Find("Sprites/Default");
+        if (!CombatEffects.IsRuntimeShaderUsable(shader)) shader = CombatEffects.FindRuntimeShader("Sprites/Default", "Unlit/Color");
 
         Material mat = new Material(shader) { name = "Runtime_ChargeFX_Additive" };
         if (mat.HasProperty("_Color")) mat.SetColor("_Color", hdrColor);
