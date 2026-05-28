@@ -76,6 +76,7 @@ public class NetworkPlayerController : MonoBehaviourPun, IPunObservable
     private readonly RaycastHit[] laserHitBuffer = new RaycastHit[64];
     private readonly Collider[] voidCollapseHitBuffer = new Collider[96];
     private GameObject cachedNetworkBulletPrefab;
+    private PlayerShipVisualTheme visualTheme;
 
     void Awake()
     {
@@ -86,9 +87,10 @@ public class NetworkPlayerController : MonoBehaviourPun, IPunObservable
     {
         networkPosition = transform.position;
         networkRotation = transform.rotation;
+        visualTheme = GetNetworkThemeForActor(GetOwnerActorNumber());
 
-        CombatEffects.ApplyPlayerShipVisuals(gameObject);
-        CombatEffects.AttachPlayerEngineJet(gameObject, firePoint);
+        CombatEffects.ApplyPlayerShipVisuals(gameObject, visualTheme);
+        CombatEffects.AttachPlayerEngineJet(gameObject, firePoint, visualTheme);
 
         if (photonView.IsMine)
         {
@@ -240,7 +242,7 @@ public class NetworkPlayerController : MonoBehaviourPun, IPunObservable
         }
 
         networkShieldRoutine = StartCoroutine(ClearNetworkShieldFlag(duration));
-        NetworkPlayerSkillFx.PlayShield(transform, duration);
+        NetworkPlayerSkillFx.PlayShield(transform, duration, visualTheme);
     }
 
     [PunRPC]
@@ -259,7 +261,7 @@ public class NetworkPlayerController : MonoBehaviourPun, IPunObservable
     [PunRPC]
     void RpcPlayVoidCollapse(Vector3 center, float duration, float pullRadius)
     {
-        NetworkPlayerSkillFx.PlayVoidSingularity(center, duration, pullRadius);
+        NetworkPlayerSkillFx.PlayVoidSingularity(center, duration, pullRadius, visualTheme);
 
         if (NetworkCoopGameRuntime.IsActive && !PhotonNetwork.IsMasterClient)
             return;
@@ -283,7 +285,7 @@ public class NetworkPlayerController : MonoBehaviourPun, IPunObservable
     IEnumerator PlayLaserVisual(float duration)
     {
         Transform origin = firePoint != null ? firePoint : transform;
-        LaserBeam laser = NetworkPlayerSkillFx.CreateLaser(origin, laserColor, laserColorIntensity, laserRange, laserStartWidth, laserEndWidth);
+        LaserBeam laser = NetworkPlayerSkillFx.CreateLaser(origin, visualTheme.Laser, laserColorIntensity, laserRange, laserStartWidth, laserEndWidth);
         if (laser == null)
             yield break;
 
@@ -410,7 +412,7 @@ public class NetworkPlayerController : MonoBehaviourPun, IPunObservable
 
             if (!handled)
             {
-                CombatEffects.SpawnHit(enemyHitPosition, -direction);
+                CombatEffects.SpawnHit(enemyHitPosition, -direction, visualTheme);
                 CombatEffects.SpawnExplosion(enemy.transform.position);
                 Destroy(enemy.gameObject);
                 ScoreManager.score += laserEnemyScoreValue;
@@ -463,7 +465,7 @@ public class NetworkPlayerController : MonoBehaviourPun, IPunObservable
                     int damage = finalBurst ? voidCollapseBossFinalDamage : voidCollapseBossDamagePerTick;
                     Vector3 bossHitPosition = targetCollider.ClosestPoint(center);
                     NetworkCoopBossIdentity bossIdentity = boss.GetComponent<NetworkCoopBossIdentity>();
-                    if (!NetworkCoopGameRuntime.ReportBossDamaged(bossIdentity, Mathf.Max(1, damage), bossHitPosition))
+                    if (!NetworkCoopGameRuntime.ReportBossDamaged(bossIdentity, Mathf.Max(1, damage), bossHitPosition, GetLocalActorNumber()))
                     {
                         boss.TakeDamage(Mathf.Max(1, damage), bossHitPosition);
                     }
@@ -481,7 +483,7 @@ public class NetworkPlayerController : MonoBehaviourPun, IPunObservable
 
             voidCollapseKilledEnemies.Add(enemy.gameObject);
             Vector3 hitPosition = targetCollider.ClosestPoint(center);
-            NetworkPlayerSkillFx.PlayVoidCrush(hitPosition);
+            NetworkPlayerSkillFx.PlayVoidCrush(hitPosition, visualTheme);
 
             NetworkCoopEnemyIdentity identity = enemy.GetComponent<NetworkCoopEnemyIdentity>();
             bool handled = NetworkCoopGameRuntime.ReportEnemyDestroyed(
@@ -510,14 +512,15 @@ public class NetworkPlayerController : MonoBehaviourPun, IPunObservable
         if (bulletPrefab == null)
             return;
 
-        GameObject bullet = Instantiate(bulletPrefab, position, rotation);
+        GameObject bullet = RuntimeObjectPool.Spawn(bulletPrefab, position, rotation);
+        PlayerShipVisualTheme bulletTheme = GetNetworkThemeForActor(ownerActorNumber);
         NetworkBullet networkBullet = bullet.GetComponent<NetworkBullet>();
         if (networkBullet != null)
         {
-            networkBullet.InitializeLocal(ownerActorNumber, skillGrantsCharge);
+            networkBullet.InitializeLocal(ownerActorNumber, skillGrantsCharge, bulletTheme);
         }
 
-        CombatEffects.SpawnMuzzleFlash(position, rotation);
+        CombatEffects.SpawnMuzzleFlash(position, rotation, bulletTheme);
     }
 
     GameObject GetNetworkBulletPrefab()
@@ -538,6 +541,47 @@ public class NetworkPlayerController : MonoBehaviourPun, IPunObservable
     int GetLocalActorNumber()
     {
         return PhotonNetwork.LocalPlayer != null ? PhotonNetwork.LocalPlayer.ActorNumber : -1;
+    }
+
+    int GetOwnerActorNumber()
+    {
+        if (photonView != null && photonView.OwnerActorNr > 0)
+            return photonView.OwnerActorNr;
+
+        return GetLocalActorNumber();
+    }
+
+    public static PlayerShipVisualTheme GetNetworkThemeForActor(int actorNumber)
+    {
+        if (actorNumber <= 0)
+        {
+            return PlayerShipColorSelection.BlueTheme;
+        }
+
+        return PlayerShipColorSelection.GetTheme(
+            actorNumber == GetRoomCreatorActorNumber()
+                ? PlayerShipColorChoice.Blue
+                : PlayerShipColorChoice.Green);
+    }
+
+    private static int GetRoomCreatorActorNumber()
+    {
+        int firstActorNumber = int.MaxValue;
+        if (PhotonNetwork.CurrentRoom != null && PhotonNetwork.CurrentRoom.Players != null)
+        {
+            foreach (int actorNumber in PhotonNetwork.CurrentRoom.Players.Keys)
+            {
+                if (actorNumber > 0 && actorNumber < firstActorNumber)
+                {
+                    firstActorNumber = actorNumber;
+                }
+            }
+        }
+
+        if (firstActorNumber != int.MaxValue)
+            return firstActorNumber;
+
+        return PhotonNetwork.MasterClient != null ? PhotonNetwork.MasterClient.ActorNumber : 1;
     }
 
     void DisableLegacyInputComponents()
@@ -571,7 +615,7 @@ public class NetworkPlayerController : MonoBehaviourPun, IPunObservable
         textObject.transform.SetParent(canvas.transform, false);
         statusText = textObject.AddComponent<TextMeshProUGUI>();
         statusText.fontSize = 25f;
-        statusText.color = new Color(0.16f, 1f, 1f, 1f);
+        statusText.color = visualTheme.SkillStatusText;
         statusText.alignment = TextAlignmentOptions.TopRight;
         statusText.fontStyle = FontStyles.Bold;
         statusText.lineSpacing = -10f;
@@ -627,6 +671,11 @@ public class NetworkPlayerController : MonoBehaviourPun, IPunObservable
         }
     }
 
+    void OnDisable()
+    {
+        CleanupRuntimeState(false);
+    }
+
     void OnDestroy()
     {
         if (LocalPlayer == this)
@@ -634,21 +683,38 @@ public class NetworkPlayerController : MonoBehaviourPun, IPunObservable
             LocalPlayer = null;
         }
 
-        if (statusText != null)
+        CleanupRuntimeState(true);
+    }
+
+    private void CleanupRuntimeState(bool destroyUi)
+    {
+        StopRuntimeCoroutine(ref networkShieldRoutine);
+        StopRuntimeCoroutine(ref laserVisualRoutine);
+        StopRuntimeCoroutine(ref laserDamageRoutine);
+        StopRuntimeCoroutine(ref barrageRoutine);
+        StopRuntimeCoroutine(ref voidCollapseRoutine);
+
+        networkShieldActive = false;
+        shieldTimeRemaining = 0f;
+        CleanupActiveLaserVisual();
+        laserKilledEnemies.Clear();
+        laserDamagedBosses.Clear();
+        voidCollapseKilledEnemies.Clear();
+        voidCollapseDamagedBosses.Clear();
+
+        if (destroyUi && statusText != null)
         {
             Destroy(statusText.gameObject);
+            statusText = null;
         }
+    }
 
-        CleanupActiveLaserVisual();
-        if (barrageRoutine != null)
-        {
-            StopCoroutine(barrageRoutine);
-            barrageRoutine = null;
-        }
-        if (voidCollapseRoutine != null)
-        {
-            StopCoroutine(voidCollapseRoutine);
-            voidCollapseRoutine = null;
-        }
+    private void StopRuntimeCoroutine(ref Coroutine routine)
+    {
+        if (routine == null)
+            return;
+
+        StopCoroutine(routine);
+        routine = null;
     }
 }

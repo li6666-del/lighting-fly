@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class BulletLogic : MonoBehaviour
+public class BulletLogic : MonoBehaviour, IPooledObject
 {
     [Header("Bullet")]
     public float speed = 20f;
@@ -10,11 +10,69 @@ public class BulletLogic : MonoBehaviour
     public bool grantsSkillCharge = true;
 
     private bool hitApplied;
+    private bool spawnedFromPool;
+    private bool defaultsCaptured;
+    private bool defaultGrantsSkillCharge;
+
+    void Awake()
+    {
+        CaptureDefaults();
+    }
 
     void Start()
     {
-        CombatEffects.AttachBulletTrail(gameObject, new Color(0.15f, 0.95f, 1f, 1f), 5f, 0.12f);
-        Destroy(gameObject, lifeTime);
+        if (!spawnedFromPool)
+        {
+            ResetBulletState();
+        }
+    }
+
+    public void OnSpawnedFromPool()
+    {
+        spawnedFromPool = true;
+        ResetBulletState();
+    }
+
+    public void OnReturnedToPool()
+    {
+        CancelInvoke(nameof(Expire));
+        hitApplied = false;
+        grantsSkillCharge = defaultGrantsSkillCharge;
+        ClearTrail();
+    }
+
+    private void CaptureDefaults()
+    {
+        if (defaultsCaptured)
+            return;
+
+        defaultGrantsSkillCharge = grantsSkillCharge;
+        defaultsCaptured = true;
+    }
+
+    private void ResetBulletState()
+    {
+        CaptureDefaults();
+        hitApplied = false;
+        grantsSkillCharge = defaultGrantsSkillCharge;
+        CombatEffects.AttachBulletTrail(gameObject, PlayerShipColorSelection.CurrentTheme.BulletTrail, 5f, 0.12f);
+        ClearTrail();
+        CancelInvoke(nameof(Expire));
+        Invoke(nameof(Expire), Mathf.Max(0.05f, lifeTime));
+    }
+
+    private void ClearTrail()
+    {
+        TrailRenderer trail = GetComponent<TrailRenderer>();
+        if (trail != null)
+        {
+            trail.Clear();
+        }
+    }
+
+    private void Expire()
+    {
+        RuntimeObjectPool.Release(gameObject);
     }
 
     void Update()
@@ -33,7 +91,7 @@ public class BulletLogic : MonoBehaviour
             hitApplied = true;
             Vector3 bossHitPosition = other.ClosestPoint(transform.position);
             boss.TakeDamage(1, bossHitPosition);
-            Destroy(gameObject);
+            RuntimeObjectPool.Release(gameObject);
             return;
         }
 
@@ -43,11 +101,11 @@ public class BulletLogic : MonoBehaviour
         hitApplied = true;
 
         Vector3 hitPosition = other.ClosestPoint(transform.position);
-        CombatEffects.SpawnHit(hitPosition, -transform.forward);
+        CombatEffects.SpawnHit(hitPosition, -transform.forward, PlayerShipColorSelection.CurrentTheme);
         CombatEffects.SpawnExplosion(other.transform.position);
 
         Destroy(other.gameObject);
-        Destroy(gameObject);
+        RuntimeObjectPool.Release(gameObject);
 
         ScoreManager.score += scoreValue;
         BloodManager.blood = Mathf.Min(100, BloodManager.blood + DifficultyManager.GetKillHealAmount(healValue));

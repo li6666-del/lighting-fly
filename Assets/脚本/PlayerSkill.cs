@@ -73,6 +73,7 @@ public class PlayerSkill : MonoBehaviour
     private readonly HashSet<BossController> voidCollapseDamagedBosses = new HashSet<BossController>();
     private readonly RaycastHit[] laserHitBuffer = new RaycastHit[64];
     private readonly Collider[] voidCollapseHitBuffer = new Collider[96];
+    private PlayerShipVisualTheme visualTheme;
 
     void Awake()
     {
@@ -87,6 +88,8 @@ public class PlayerSkill : MonoBehaviour
 
     void Start()
     {
+        visualTheme = PlayerShipColorSelection.CurrentTheme;
+        laserColor = visualTheme.Laser;
         fireLogic = GetComponent<FireLogic>();
         CreateShieldVisual();
         CreateStatusText();
@@ -196,7 +199,7 @@ public class PlayerSkill : MonoBehaviour
             voidCollapseClusterRadius,
             voidCollapseFallbackDistance);
 
-        NetworkPlayerSkillFx.PlayVoidSingularity(center, voidCollapseDuration, voidCollapsePullRadius);
+        NetworkPlayerSkillFx.PlayVoidSingularity(center, voidCollapseDuration, voidCollapsePullRadius, visualTheme);
         voidCollapseRoutine = StartCoroutine(VoidCollapseRoutine(center));
         UpdateStatusText();
         return true;
@@ -222,9 +225,9 @@ public class PlayerSkill : MonoBehaviour
                 Quaternion rotation = origin.rotation * Quaternion.Euler(0f, angle, 0f);
                 Vector3 sideOffset = origin.right * ((i - (count - 1) * 0.5f) * 0.9f);
                 Vector3 position = origin.position + sideOffset + rotation * Vector3.forward * barrageSpawnOffset;
-                GameObject bullet = Instantiate(fireLogic.bulletPrefab, position, rotation);
+                GameObject bullet = RuntimeObjectPool.Spawn(fireLogic.bulletPrefab, position, rotation);
                 MarkSkillBullet(bullet);
-                CombatEffects.SpawnMuzzleFlash(position, rotation);
+                CombatEffects.SpawnMuzzleFlash(position, rotation, visualTheme);
             }
 
             yield return new WaitForSeconds(barrageWaveInterval);
@@ -275,7 +278,7 @@ public class PlayerSkill : MonoBehaviour
         laserObject.transform.localRotation = Quaternion.identity;
 
         skillLaser = laserObject.AddComponent<LaserBeam>();
-        skillLaser.beamColor = laserColor;
+        skillLaser.beamColor = visualTheme.Laser;
         skillLaser.colorIntensity = laserColorIntensity;
         skillLaser.startWidth = laserStartWidth;
         skillLaser.endWidth = laserEndWidth;
@@ -329,7 +332,7 @@ public class PlayerSkill : MonoBehaviour
 
             laserKilledEnemies.Add(enemy.gameObject);
             Vector3 enemyHitPosition = targetCollider.ClosestPoint(start);
-            CombatEffects.SpawnHit(enemyHitPosition, -direction);
+            CombatEffects.SpawnHit(enemyHitPosition, -direction, visualTheme);
             CombatEffects.SpawnExplosion(enemy.transform.position);
 
             Destroy(enemy.gameObject);
@@ -395,7 +398,7 @@ public class PlayerSkill : MonoBehaviour
 
             voidCollapseKilledEnemies.Add(enemy.gameObject);
             Vector3 hitPosition = targetCollider.ClosestPoint(center);
-            NetworkPlayerSkillFx.PlayVoidCrush(hitPosition);
+            NetworkPlayerSkillFx.PlayVoidCrush(hitPosition, visualTheme);
             Destroy(enemy.gameObject);
             ScoreManager.score += Mathf.Max(0, voidCollapseEnemyScoreValue);
             BloodManager.blood = Mathf.Min(100, BloodManager.blood + DifficultyManager.GetKillHealAmount(voidCollapseEnemyHealValue));
@@ -435,7 +438,7 @@ public class PlayerSkill : MonoBehaviour
         lightObject.transform.localPosition = Vector3.zero;
         shieldLight = lightObject.AddComponent<Light>();
         shieldLight.type = LightType.Point;
-        shieldLight.color = new Color(0.08f, 0.95f, 1f);
+        shieldLight.color = visualTheme.ShieldLight;
         shieldLight.intensity = 1.7f;
         shieldLight.range = 48f;
 
@@ -455,7 +458,7 @@ public class PlayerSkill : MonoBehaviour
             name = "Runtime_Skill_Shield"
         };
 
-        Color color = new Color(0.12f, 0.85f, 1f, 0.22f);
+        Color color = visualTheme.ShieldShell;
         if (material.HasProperty("_Color"))
         {
             material.SetColor("_Color", color);
@@ -463,7 +466,7 @@ public class PlayerSkill : MonoBehaviour
         if (material.HasProperty("_EmissionColor"))
         {
             material.EnableKeyword("_EMISSION");
-            material.SetColor("_EmissionColor", new Color(0.05f, 0.75f, 1f) * 1.1f);
+            material.SetColor("_EmissionColor", visualTheme.ShieldEmission * 1.1f);
         }
 
         material.SetFloat("_Mode", 3f);
@@ -492,7 +495,7 @@ public class PlayerSkill : MonoBehaviour
         line.endWidth = width;
         line.numCapVertices = 3;
         line.numCornerVertices = 3;
-        line.material = CreateShieldAdditiveMaterial(new Color(0.15f, 0.95f, 1f, 0.72f));
+        line.material = CreateShieldAdditiveMaterial(visualTheme.ShieldRing);
 
         for (int i = 0; i < line.positionCount; i++)
         {
@@ -517,7 +520,9 @@ public class PlayerSkill : MonoBehaviour
         main.startLifetime = new ParticleSystem.MinMaxCurve(0.35f, 0.85f);
         main.startSpeed = new ParticleSystem.MinMaxCurve(2f, 6f);
         main.startSize = new ParticleSystem.MinMaxCurve(0.35f, 1.05f);
-        main.startColor = new ParticleSystem.MinMaxGradient(new Color(0.08f, 0.95f, 1f, 0.35f), Color.white);
+        Color particleStart = visualTheme.ShieldParticleStart;
+        particleStart.a = 0.35f;
+        main.startColor = new ParticleSystem.MinMaxGradient(particleStart, Color.white);
         main.simulationSpace = ParticleSystemSimulationSpace.Local;
         main.maxParticles = 120;
 
@@ -535,9 +540,9 @@ public class PlayerSkill : MonoBehaviour
         gradient.SetKeys(
             new[]
             {
-                new GradientColorKey(new Color(0.08f, 0.95f, 1f), 0f),
+                new GradientColorKey(visualTheme.ShieldParticleStart, 0f),
                 new GradientColorKey(Color.white, 0.28f),
-                new GradientColorKey(new Color(0.08f, 0.55f, 1f), 1f)
+                new GradientColorKey(visualTheme.ShieldParticleEnd, 1f)
             },
             new[]
             {
@@ -558,11 +563,7 @@ public class PlayerSkill : MonoBehaviour
 
     private Material CreateShieldAdditiveMaterial(Color color)
     {
-        Shader shader = Shader.Find("Particles/Standard Unlit");
-        if (shader == null)
-        {
-            shader = Shader.Find("Legacy Shaders/Particles/Additive");
-        }
+        Shader shader = CombatEffects.GetAdditiveEffectShader();
         if (shader == null)
         {
             shader = Shader.Find("Sprites/Default");
@@ -614,12 +615,13 @@ public class PlayerSkill : MonoBehaviour
         }
         if (shieldShellMaterial != null && shieldShellMaterial.HasProperty("_Color"))
         {
-            Color color = new Color(0.12f, 0.85f, 1f, Mathf.Lerp(0.14f, 0.26f, pulse));
+            Color color = visualTheme.ShieldShell;
+            color.a = Mathf.Lerp(0.14f, 0.26f, pulse);
             shieldShellMaterial.SetColor("_Color", color);
         }
         if (shieldShellMaterial != null && shieldShellMaterial.HasProperty("_EmissionColor"))
         {
-            shieldShellMaterial.SetColor("_EmissionColor", new Color(0.05f, 0.75f, 1f) * Mathf.Lerp(0.75f, 1.45f, pulse));
+            shieldShellMaterial.SetColor("_EmissionColor", visualTheme.ShieldEmission * Mathf.Lerp(0.75f, 1.45f, pulse));
         }
     }
 
@@ -652,7 +654,7 @@ public class PlayerSkill : MonoBehaviour
         textObject.transform.SetParent(canvas.transform, false);
         statusText = textObject.AddComponent<TextMeshProUGUI>();
         statusText.fontSize = 25f;
-        statusText.color = new Color(0.16f, 1f, 1f, 1f);
+        statusText.color = visualTheme.SkillStatusText;
         statusText.alignment = TextAlignmentOptions.TopRight;
         statusText.fontStyle = FontStyles.Bold;
         statusText.lineSpacing = -10f;
@@ -706,18 +708,55 @@ public class PlayerSkill : MonoBehaviour
         }
     }
 
+    void OnDisable()
+    {
+        CleanupRuntimeState(false);
+    }
+
     void OnDestroy()
     {
-        StopAllCoroutines();
-
-        if (statusText != null)
-        {
-            Destroy(statusText.gameObject);
-        }
+        CleanupRuntimeState(true);
 
         if (Instance == this)
         {
             Instance = null;
+        }
+    }
+
+    private void CleanupRuntimeState(bool destroyUi)
+    {
+        if (laserRoutine != null)
+        {
+            StopCoroutine(laserRoutine);
+            laserRoutine = null;
+        }
+
+        if (voidCollapseRoutine != null)
+        {
+            StopCoroutine(voidCollapseRoutine);
+            voidCollapseRoutine = null;
+        }
+
+        StopAllCoroutines();
+
+        if (skillLaser != null)
+        {
+            skillLaser.EndFire();
+            Destroy(skillLaser.gameObject);
+            skillLaser = null;
+        }
+
+        shieldTimeRemaining = 0f;
+        SetShieldVisible(false);
+        laserKilledEnemies.Clear();
+        laserDamagedBosses.Clear();
+        voidCollapseKilledEnemies.Clear();
+        voidCollapseDamagedBosses.Clear();
+
+        if (destroyUi && statusText != null)
+        {
+            Destroy(statusText.gameObject);
+            statusText = null;
         }
     }
 }

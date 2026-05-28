@@ -4,6 +4,11 @@ public static class NetworkPlayerSkillFx
 {
     public static void PlayShield(Transform parent, float duration)
     {
+        PlayShield(parent, duration, PlayerShipColorSelection.BlueTheme);
+    }
+
+    public static void PlayShield(Transform parent, float duration, PlayerShipVisualTheme theme)
+    {
         if (parent == null)
             return;
 
@@ -11,7 +16,7 @@ public static class NetworkPlayerSkillFx
         shieldObject.transform.SetParent(parent, false);
         shieldObject.transform.localPosition = Vector3.zero;
         NetworkSkillShieldFx shieldFx = shieldObject.AddComponent<NetworkSkillShieldFx>();
-        shieldFx.Initialize(duration);
+        shieldFx.Initialize(duration, theme);
     }
 
     public static LaserBeam CreateLaser(Transform origin, Color color, float intensity, float range, float startWidth, float endWidth)
@@ -40,18 +45,28 @@ public static class NetworkPlayerSkillFx
 
     public static void PlayVoidSingularity(Vector3 position, float duration, float radius)
     {
+        PlayVoidSingularity(position, duration, radius, PlayerShipColorSelection.BlueTheme);
+    }
+
+    public static void PlayVoidSingularity(Vector3 position, float duration, float radius, PlayerShipVisualTheme theme)
+    {
         GameObject singularityObject = new GameObject("Void Singularity Skill Visual");
         singularityObject.transform.position = position;
         VoidSingularityFx singularity = singularityObject.AddComponent<VoidSingularityFx>();
-        singularity.Initialize(duration, radius);
+        singularity.Initialize(duration, radius, theme);
     }
 
     public static void PlayVoidCrush(Vector3 position)
     {
+        PlayVoidCrush(position, PlayerShipColorSelection.BlueTheme);
+    }
+
+    public static void PlayVoidCrush(Vector3 position, PlayerShipVisualTheme theme)
+    {
         GameObject crushObject = new GameObject("Void Crush Hit");
         crushObject.transform.position = position;
         VoidCrushFx crush = crushObject.AddComponent<VoidCrushFx>();
-        crush.Initialize();
+        crush.Initialize(theme);
     }
 }
 
@@ -170,17 +185,28 @@ public class VoidSingularityFx : MonoBehaviour
     private readonly System.Collections.Generic.List<Transform> rings = new System.Collections.Generic.List<Transform>();
     private readonly System.Collections.Generic.List<Material> materials = new System.Collections.Generic.List<Material>();
     private Transform core;
+    private Transform eventHorizonHalo;
+    private Transform lensingBand;
     private Transform shadowField;
     private Light pulseLight;
     private bool collapsed;
+    private PlayerShipVisualTheme visualTheme;
 
     public void Initialize(float duration, float radius)
     {
+        Initialize(duration, radius, PlayerShipColorSelection.BlueTheme);
+    }
+
+    public void Initialize(float duration, float radius, PlayerShipVisualTheme theme)
+    {
+        visualTheme = theme;
         this.duration = Mathf.Max(0.2f, duration);
         this.radius = Mathf.Max(300f, radius * 1.25f);
         CreateCore();
+        CreateEventHorizonHalo();
         CreateShadowField();
         CreateRings();
+        CreateAccretionStreams();
         CreateInwardParticles();
         CreateTearLines();
         CreateLight();
@@ -197,6 +223,20 @@ public class VoidSingularityFx : MonoBehaviour
         {
             float coreScale = Mathf.Lerp(radius * 0.26f, radius * 0.15f, collapseEase) * Mathf.Lerp(0.9f, 1.1f, pulse);
             core.localScale = Vector3.one * coreScale;
+        }
+
+        if (eventHorizonHalo != null)
+        {
+            eventHorizonHalo.Rotate(Vector3.up, 440f * Time.deltaTime, Space.Self);
+            float haloScale = Mathf.Lerp(1f, 0.62f, collapseEase) * Mathf.Lerp(0.92f, 1.08f, pulse);
+            eventHorizonHalo.localScale = Vector3.one * haloScale;
+        }
+
+        if (lensingBand != null)
+        {
+            lensingBand.Rotate(Vector3.up, -185f * Time.deltaTime, Space.Self);
+            float bandScale = Mathf.Lerp(1f, 0.7f, collapseEase) * Mathf.Lerp(0.96f, 1.04f, pulse);
+            lensingBand.localScale = Vector3.one * bandScale;
         }
 
         if (shadowField != null)
@@ -225,7 +265,7 @@ public class VoidSingularityFx : MonoBehaviour
         if (elapsed >= duration && !collapsed)
         {
             collapsed = true;
-            VoidCollapseWave.Spawn(transform.position, radius * 1.08f);
+            VoidCollapseWave.Spawn(transform.position, radius * 1.08f, visualTheme);
             Camera camera = Camera.main;
             if (camera != null)
             {
@@ -273,11 +313,60 @@ public class VoidSingularityFx : MonoBehaviour
         materials.Add(material);
     }
 
+    private void CreateEventHorizonHalo()
+    {
+        eventHorizonHalo = CreateOrbitLine(
+            "Void Photon Ring",
+            radius * 0.32f,
+            0.58f,
+            radius * 0.018f,
+            Quaternion.Euler(8f, 0f, 0f),
+            WithAlpha(visualTheme.VoidInnerRing, 0.86f),
+            192).transform;
+
+        lensingBand = CreateOrbitLine(
+            "Void Gravitational Lensing Band",
+            radius * 0.42f,
+            0.36f,
+            radius * 0.01f,
+            Quaternion.Euler(-12f, 0f, 19f),
+            WithAlpha(visualTheme.VoidTear, 0.42f),
+            224).transform;
+    }
+
     private void CreateRings()
     {
-        CreateRing("Void Inner Event Horizon", radius * 0.35f, radius * 0.015f, Quaternion.Euler(8f, 0f, 0f), new Color(0.46f, 0.78f, 1.05f, 0.55f), 192);
+        CreateRing("Void Inner Event Horizon", radius * 0.35f, radius * 0.015f, Quaternion.Euler(8f, 0f, 0f), visualTheme.VoidInnerRing, 192);
         CreateRing("Void Deep Accretion Ring", radius * 0.58f, radius * 0.032f, Quaternion.Euler(18f, 0f, 34f), new Color(0.17f, 0.04f, 0.35f, 0.58f), 224);
         CreateBrokenAccretionArcs();
+    }
+
+    private GameObject CreateOrbitLine(string name, float ringRadius, float ellipse, float width, Quaternion localRotation, Color color, int segments)
+    {
+        GameObject ringObject = new GameObject(name);
+        ringObject.transform.SetParent(transform, false);
+        ringObject.transform.localRotation = localRotation;
+
+        LineRenderer line = ringObject.AddComponent<LineRenderer>();
+        line.useWorldSpace = false;
+        line.loop = true;
+        line.positionCount = segments;
+        line.startWidth = width;
+        line.endWidth = width;
+        line.numCapVertices = 5;
+        line.numCornerVertices = 4;
+        Material material = CreateAdditiveMaterial(color, "Runtime_Void_Orbit_Line");
+        line.material = material;
+        materials.Add(material);
+
+        for (int i = 0; i < segments; i++)
+        {
+            float angle = i / (float)segments * Mathf.PI * 2f;
+            float ripple = 1f + Mathf.Sin(angle * 6f) * 0.018f;
+            line.SetPosition(i, new Vector3(Mathf.Cos(angle) * ringRadius * ripple, 0f, Mathf.Sin(angle) * ringRadius * ellipse * ripple));
+        }
+
+        return ringObject;
     }
 
     private void CreateRing(string name, float ringRadius, float width, Quaternion localRotation, Color color, int segments)
@@ -350,6 +439,56 @@ public class VoidSingularityFx : MonoBehaviour
         }
     }
 
+    private void CreateAccretionStreams()
+    {
+        GameObject streamRoot = new GameObject("Void Inward Accretion Streams");
+        streamRoot.transform.SetParent(transform, false);
+        streamRoot.transform.localRotation = Quaternion.Euler(14f, 0f, -10f);
+        rings.Add(streamRoot.transform);
+
+        const int streamCount = 18;
+        for (int i = 0; i < streamCount; i++)
+        {
+            GameObject stream = new GameObject("Void Inward Stream");
+            stream.transform.SetParent(streamRoot.transform, false);
+            stream.transform.localRotation = Quaternion.Euler(Random.Range(-6f, 6f), Random.Range(0f, 360f), Random.Range(-4f, 4f));
+
+            LineRenderer line = stream.AddComponent<LineRenderer>();
+            line.useWorldSpace = false;
+            line.loop = false;
+            line.positionCount = 14;
+            line.startWidth = radius * Random.Range(0.006f, 0.012f);
+            line.endWidth = radius * Random.Range(0.0015f, 0.0035f);
+            line.numCapVertices = 3;
+            line.numCornerVertices = 2;
+
+            Color streamColor = Color.Lerp(visualTheme.VoidTear, visualTheme.VoidInnerRing, Random.Range(0.25f, 0.75f));
+            streamColor.a = Random.Range(0.22f, 0.48f);
+            Material material = CreateAdditiveMaterial(streamColor, "Runtime_Void_Inward_Stream");
+            line.material = material;
+            materials.Add(material);
+
+            float startAngle = Random.Range(0f, Mathf.PI * 2f);
+            float spiral = Random.Range(0.55f, 1.25f) * Mathf.PI;
+            float startRadius = radius * Random.Range(0.7f, 1.08f);
+            float endRadius = radius * Random.Range(0.18f, 0.32f);
+            float verticalOffset = Random.Range(-radius * 0.035f, radius * 0.035f);
+
+            for (int j = 0; j < line.positionCount; j++)
+            {
+                float t = j / Mathf.Max(1f, line.positionCount - 1f);
+                float eased = 1f - (1f - t) * (1f - t);
+                float angle = startAngle + spiral * eased;
+                float streamRadius = Mathf.Lerp(startRadius, endRadius, eased);
+                float wobble = 1f + Mathf.Sin(t * Mathf.PI * 4f + i) * 0.025f;
+                line.SetPosition(j, new Vector3(
+                    Mathf.Cos(angle) * streamRadius * wobble,
+                    verticalOffset * (1f - t),
+                    Mathf.Sin(angle) * streamRadius * 0.42f * wobble));
+            }
+        }
+    }
+
     private void CreateInwardParticles()
     {
         GameObject node = new GameObject("Void Fine Inward Dust");
@@ -392,7 +531,7 @@ public class VoidSingularityFx : MonoBehaviour
             {
                 new GradientColorKey(new Color(0.04f, 0.06f, 0.14f), 0f),
                 new GradientColorKey(new Color(0.22f, 0.08f, 0.42f), 0.46f),
-                new GradientColorKey(new Color(0.75f, 0.9f, 1f), 1f)
+                new GradientColorKey(visualTheme.VoidCrushStart, 1f)
             },
             new[]
             {
@@ -437,7 +576,7 @@ public class VoidSingularityFx : MonoBehaviour
 
     private void CreateTearLines()
     {
-        Material material = CreateAdditiveMaterial(new Color(0.58f, 0.76f, 1.05f, 0.36f), "Runtime_Void_Gravity_Tears");
+        Material material = CreateAdditiveMaterial(visualTheme.VoidTear, "Runtime_Void_Gravity_Tears");
         materials.Add(material);
         for (int i = 0; i < 24; i++)
         {
@@ -466,7 +605,7 @@ public class VoidSingularityFx : MonoBehaviour
         lightObject.transform.SetParent(transform, false);
         pulseLight = lightObject.AddComponent<Light>();
         pulseLight.type = LightType.Point;
-        pulseLight.color = new Color(0.38f, 0.72f, 1f);
+        pulseLight.color = visualTheme.VoidLight;
         pulseLight.intensity = 7.5f;
         pulseLight.range = radius * 0.95f;
     }
@@ -539,9 +678,7 @@ public class VoidSingularityFx : MonoBehaviour
 
     private static Material CreateAdditiveMaterial(Color color, string name)
     {
-        Shader shader = Shader.Find("Particles/Standard Unlit");
-        if (shader == null)
-            shader = Shader.Find("Legacy Shaders/Particles/Additive");
+        Shader shader = CombatEffects.GetAdditiveEffectShader();
         if (shader == null)
             shader = Shader.Find("Sprites/Default");
 
@@ -558,6 +695,12 @@ public class VoidSingularityFx : MonoBehaviour
             material.SetInt("_ZWrite", 0);
         material.renderQueue = 3000;
         return material;
+    }
+
+    private static Color WithAlpha(Color color, float alpha)
+    {
+        color.a = alpha;
+        return color;
     }
 
     private static Texture2D GetSoftParticleTexture()
@@ -593,26 +736,38 @@ public class VoidCollapseWave : MonoBehaviour
     private float duration;
     private LineRenderer coldRing;
     private LineRenderer darkRing;
+    private PlayerShipVisualTheme visualTheme;
     private readonly System.Collections.Generic.List<Material> materials = new System.Collections.Generic.List<Material>();
 
     public static void Spawn(Vector3 position, float radius)
     {
+        Spawn(position, radius, PlayerShipColorSelection.BlueTheme);
+    }
+
+    public static void Spawn(Vector3 position, float radius, PlayerShipVisualTheme theme)
+    {
         GameObject waveObject = new GameObject("Void Collapse Wave");
         waveObject.transform.position = position;
         VoidCollapseWave wave = waveObject.AddComponent<VoidCollapseWave>();
-        wave.Initialize(radius);
+        wave.Initialize(radius, theme);
     }
 
     public void Initialize(float radius)
     {
+        Initialize(radius, PlayerShipColorSelection.BlueTheme);
+    }
+
+    public void Initialize(float radius, PlayerShipVisualTheme theme)
+    {
+        visualTheme = theme;
         this.radius = Mathf.Max(10f, radius);
         duration = 0.46f;
-        coldRing = CreateRing("Void Cold Collapse Ring", new Color(0.45f, 0.62f, 0.9f, 0.58f), this.radius * 0.011f);
+        coldRing = CreateRing("Void Cold Collapse Ring", visualTheme.VoidCollapseRing, this.radius * 0.011f);
         darkRing = CreateRing("Void Deep Collapse Ring", new Color(0.08f, 0.015f, 0.22f, 0.64f), this.radius * 0.035f);
 
         Light flash = gameObject.AddComponent<Light>();
         flash.type = LightType.Point;
-        flash.color = new Color(0.55f, 0.78f, 1f);
+        flash.color = visualTheme.VoidCollapseFlash;
         flash.intensity = 3.2f;
         flash.range = this.radius * 0.62f;
         Destroy(flash, 0.12f);
@@ -689,9 +844,7 @@ public class VoidCollapseWave : MonoBehaviour
 
     private static Material VoidSingularityFx_CreateAdditiveMaterial(Color color, string name)
     {
-        Shader shader = Shader.Find("Particles/Standard Unlit");
-        if (shader == null)
-            shader = Shader.Find("Legacy Shaders/Particles/Additive");
+        Shader shader = CombatEffects.GetAdditiveEffectShader();
         if (shader == null)
             shader = Shader.Find("Sprites/Default");
 
@@ -717,9 +870,16 @@ public class VoidCrushFx : MonoBehaviour
     private const float Duration = 0.28f;
     private ParticleSystem particles;
     private Material material;
+    private PlayerShipVisualTheme visualTheme;
 
     public void Initialize()
     {
+        Initialize(PlayerShipColorSelection.BlueTheme);
+    }
+
+    public void Initialize(PlayerShipVisualTheme theme)
+    {
+        visualTheme = theme;
         GameObject particleObject = new GameObject("Void Crush Fine Particles");
         particleObject.SetActive(false);
         particleObject.transform.SetParent(transform, false);
@@ -747,7 +907,7 @@ public class VoidCrushFx : MonoBehaviour
         gradient.SetKeys(
             new[]
             {
-                new GradientColorKey(new Color(0.78f, 0.9f, 1f), 0f),
+                new GradientColorKey(visualTheme.VoidCrushStart, 0f),
                 new GradientColorKey(new Color(0.12f, 0.04f, 0.28f), 1f)
             },
             new[]
@@ -785,9 +945,7 @@ public class VoidCrushFx : MonoBehaviour
 
     private Material CreateMaterial()
     {
-        Shader shader = Shader.Find("Particles/Standard Unlit");
-        if (shader == null)
-            shader = Shader.Find("Legacy Shaders/Particles/Additive");
+        Shader shader = CombatEffects.GetAdditiveEffectShader();
         if (shader == null)
             shader = Shader.Find("Sprites/Default");
         return new Material(shader) { name = "Runtime_Void_Crush" };
@@ -804,9 +962,16 @@ public class NetworkSkillShieldFx : MonoBehaviour
     private ParticleSystem particles;
     private Material ringMaterial;
     private Material particleMaterial;
+    private PlayerShipVisualTheme visualTheme;
 
     public void Initialize(float duration)
     {
+        Initialize(duration, PlayerShipColorSelection.BlueTheme);
+    }
+
+    public void Initialize(float duration, PlayerShipVisualTheme theme)
+    {
+        visualTheme = theme;
         remainingTime = Mathf.Max(0.1f, duration);
         CreateShell();
         ringA = CreateRing("Network Shield Outer Ring", 46f, 1.5f, Quaternion.identity).transform;
@@ -838,11 +1003,13 @@ public class NetworkSkillShieldFx : MonoBehaviour
         }
         if (shellMaterial != null && shellMaterial.HasProperty("_Color"))
         {
-            shellMaterial.SetColor("_Color", new Color(0.12f, 0.85f, 1f, Mathf.Lerp(0.14f, 0.26f, pulse)));
+            Color shellColor = visualTheme.ShieldShell;
+            shellColor.a = Mathf.Lerp(0.14f, 0.26f, pulse);
+            shellMaterial.SetColor("_Color", shellColor);
         }
         if (shellMaterial != null && shellMaterial.HasProperty("_EmissionColor"))
         {
-            shellMaterial.SetColor("_EmissionColor", new Color(0.05f, 0.75f, 1f) * Mathf.Lerp(0.75f, 1.45f, pulse));
+            shellMaterial.SetColor("_EmissionColor", visualTheme.ShieldEmission * Mathf.Lerp(0.75f, 1.45f, pulse));
         }
     }
 
@@ -890,7 +1057,7 @@ public class NetworkSkillShieldFx : MonoBehaviour
         lightObject.transform.localPosition = Vector3.zero;
         pulseLight = lightObject.AddComponent<Light>();
         pulseLight.type = LightType.Point;
-        pulseLight.color = new Color(0.08f, 0.95f, 1f);
+        pulseLight.color = visualTheme.ShieldLight;
         pulseLight.intensity = 1.7f;
         pulseLight.range = 48f;
     }
@@ -903,11 +1070,11 @@ public class NetworkSkillShieldFx : MonoBehaviour
 
         Material material = new Material(shader) { name = "Runtime_Network_Skill_Shield" };
         if (material.HasProperty("_Color"))
-            material.SetColor("_Color", new Color(0.12f, 0.85f, 1f, 0.22f));
+            material.SetColor("_Color", visualTheme.ShieldShell);
         if (material.HasProperty("_EmissionColor"))
         {
             material.EnableKeyword("_EMISSION");
-            material.SetColor("_EmissionColor", new Color(0.05f, 0.75f, 1f) * 1.1f);
+            material.SetColor("_EmissionColor", visualTheme.ShieldEmission * 1.1f);
         }
 
         material.SetFloat("_Mode", 3f);
@@ -938,7 +1105,7 @@ public class NetworkSkillShieldFx : MonoBehaviour
         line.numCornerVertices = 3;
         if (ringMaterial == null)
         {
-            ringMaterial = CreateAdditiveMaterial(new Color(0.15f, 0.95f, 1f, 0.72f));
+            ringMaterial = CreateAdditiveMaterial(visualTheme.ShieldRing);
         }
         line.material = ringMaterial;
 
@@ -965,7 +1132,9 @@ public class NetworkSkillShieldFx : MonoBehaviour
         main.startLifetime = new ParticleSystem.MinMaxCurve(0.35f, 0.85f);
         main.startSpeed = new ParticleSystem.MinMaxCurve(2f, 6f);
         main.startSize = new ParticleSystem.MinMaxCurve(0.35f, 1.05f);
-        main.startColor = new ParticleSystem.MinMaxGradient(new Color(0.08f, 0.95f, 1f, 0.35f), Color.white);
+        Color particleStart = visualTheme.ShieldParticleStart;
+        particleStart.a = 0.35f;
+        main.startColor = new ParticleSystem.MinMaxGradient(particleStart, Color.white);
         main.simulationSpace = ParticleSystemSimulationSpace.Local;
         main.maxParticles = 120;
 
@@ -983,9 +1152,9 @@ public class NetworkSkillShieldFx : MonoBehaviour
         gradient.SetKeys(
             new[]
             {
-                new GradientColorKey(new Color(0.08f, 0.95f, 1f), 0f),
+                new GradientColorKey(visualTheme.ShieldParticleStart, 0f),
                 new GradientColorKey(Color.white, 0.28f),
-                new GradientColorKey(new Color(0.08f, 0.55f, 1f), 1f)
+                new GradientColorKey(visualTheme.ShieldParticleEnd, 1f)
             },
             new[]
             {
@@ -998,7 +1167,7 @@ public class NetworkSkillShieldFx : MonoBehaviour
 
         ParticleSystemRenderer particleRenderer = shieldParticles.GetComponent<ParticleSystemRenderer>();
         particleRenderer.renderMode = ParticleSystemRenderMode.Billboard;
-        particleMaterial = CreateAdditiveMaterial(Color.white);
+        particleMaterial = CreateAdditiveMaterial(visualTheme.ShieldParticleStart);
         particleRenderer.material = particleMaterial;
         node.SetActive(true);
         shieldParticles.Play();
@@ -1007,9 +1176,7 @@ public class NetworkSkillShieldFx : MonoBehaviour
 
     private Material CreateAdditiveMaterial(Color color)
     {
-        Shader shader = Shader.Find("Particles/Standard Unlit");
-        if (shader == null)
-            shader = Shader.Find("Legacy Shaders/Particles/Additive");
+        Shader shader = CombatEffects.GetAdditiveEffectShader();
         if (shader == null)
             shader = Shader.Find("Sprites/Default");
 

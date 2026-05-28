@@ -344,11 +344,7 @@ public class GameManager : MonoBehaviour
         if (engineFlameMaterial != null)
             return engineFlameMaterial;
 
-        Shader shader = Shader.Find("Particles/Standard Unlit");
-        if (shader == null)
-        {
-            shader = Shader.Find("Legacy Shaders/Particles/Additive");
-        }
+        Shader shader = CombatEffects.GetAdditiveEffectShader();
         if (shader == null)
         {
             shader = Shader.Find("Sprites/Default");

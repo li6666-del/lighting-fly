@@ -14,6 +14,7 @@ public static class NetworkCoopSession
         IsCoopGameActive = true;
         IsReturningToLobby = false;
         HasCoopReturnTarget = true;
+        RuntimeObjectPool.ClearAll();
     }
 
     public static void EndCoopSession(bool disconnectFromPhoton = false)
@@ -21,6 +22,7 @@ public static class NetworkCoopSession
         IsCoopGameActive = false;
         IsReturningToLobby = false;
         HasCoopReturnTarget = false;
+        RuntimeObjectPool.ClearAll();
         PhotonNetwork.AutomaticallySyncScene = false;
 
         if (PhotonNetwork.InRoom)
@@ -38,6 +40,7 @@ public static class NetworkCoopSession
         IsCoopGameActive = false;
         IsReturningToLobby = true;
         HasCoopReturnTarget = true;
+        RuntimeObjectPool.ClearAll();
         PhotonNetwork.AutomaticallySyncScene = false;
 
         if (PhotonNetwork.IsConnected)

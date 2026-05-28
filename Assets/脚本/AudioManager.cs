@@ -32,7 +32,7 @@ public class AudioManager : MonoBehaviour
                 return "No BGM";
 
             AudioClip clip = bgmTracks[CurrentTrackIndex];
-            return clip != null ? clip.name : "No BGM";
+            return GetDisplayTrackName(clip, CurrentTrackIndex);
         }
     }
 
@@ -200,7 +200,67 @@ public class AudioManager : MonoBehaviour
         if (bgmTracks == null || index < 0 || index >= bgmTracks.Length || bgmTracks[index] == null)
             return "No BGM";
 
-        return bgmTracks[index].name;
+        return GetDisplayTrackName(bgmTracks[index], index);
+    }
+
+    private string GetDisplayTrackName(AudioClip clip, int index)
+    {
+        if (clip == null)
+            return "No BGM";
+
+        string cleanName = StripNonAsciiTrackName(clip.name);
+        return string.IsNullOrWhiteSpace(cleanName) ? $"Track {index + 1}" : cleanName;
+    }
+
+    private string StripNonAsciiTrackName(string rawName)
+    {
+        if (string.IsNullOrWhiteSpace(rawName))
+            return string.Empty;
+
+        System.Text.StringBuilder builder = new System.Text.StringBuilder(rawName.Length);
+        bool previousWasSpace = false;
+        foreach (char c in rawName)
+        {
+            char output = c;
+            if (c == '_' || c == '-' || c == '.')
+            {
+                output = ' ';
+            }
+
+            bool keep = output >= 32 && output <= 126;
+            if (!keep)
+                continue;
+
+            if (char.IsWhiteSpace(output))
+            {
+                if (!previousWasSpace)
+                {
+                    builder.Append(' ');
+                    previousWasSpace = true;
+                }
+            }
+            else
+            {
+                builder.Append(output);
+                previousWasSpace = false;
+            }
+        }
+
+        return RemoveSourceWatermark(builder.ToString().Trim());
+    }
+
+    private string RemoveSourceWatermark(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return string.Empty;
+
+        int watermarkIndex = name.IndexOf("aigei com", System.StringComparison.OrdinalIgnoreCase);
+        if (watermarkIndex >= 0)
+        {
+            name = name.Substring(0, watermarkIndex).Trim();
+        }
+
+        return name.Trim('-', '_', ' ');
     }
 
     private void LoadSettings()

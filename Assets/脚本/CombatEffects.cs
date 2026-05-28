@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public static class CombatEffects
@@ -5,17 +6,21 @@ public static class CombatEffects
     private static Material additiveParticleMaterial;
     private static Material engineFlameMaterial;
     private static Material beamMetalMaterial;
-    private static Material playerAccentMaterial;
+    private static Shader additiveEffectShader;
+    private static readonly Dictionary<int, Material> playerAccentMaterials = new Dictionary<int, Material>();
     private static Material enemyAccentMaterial;
     private static Texture2D softParticleTexture;
 
     public static void ApplyPlayerShipVisuals(GameObject ship)
     {
+        ApplyPlayerShipVisuals(ship, PlayerShipColorSelection.BlueTheme);
+    }
+
+    public static void ApplyPlayerShipVisuals(GameObject ship, PlayerShipVisualTheme theme)
+    {
         if (ship == null || ship.transform.Find("Runtime Player Hero FX") != null)
             return;
 
-        Color tintColor = new Color(0.04f, 0.18f, 0.22f);
-        Color glowColor = new Color(0.08f, 0.92f, 1f);
         Renderer[] renderers = ship.GetComponentsInChildren<Renderer>();
         foreach (Renderer renderer in renderers)
         {
@@ -25,15 +30,20 @@ public static class CombatEffects
             Material[] materials = renderer.materials;
             foreach (Material material in materials)
             {
-                TuneExistingShipMaterial(material, tintColor, glowColor, 0.09f, 0.18f);
+                TuneExistingShipMaterial(material, theme.ShipTint, theme.ShipGlow, 0.09f, 0.18f);
             }
         }
 
-        AddPersistentGlowLight(ship.transform, glowColor, 1.05f, 26f);
-        AddPlayerHeroFx(ship.transform);
+        AddPersistentGlowLight(ship.transform, theme.ShipGlow, 1.05f, 26f);
+        AddPlayerHeroFx(ship.transform, theme);
     }
 
     public static void AttachPlayerEngineJet(GameObject ship, Transform firePoint)
+    {
+        AttachPlayerEngineJet(ship, firePoint, PlayerShipColorSelection.BlueTheme);
+    }
+
+    public static void AttachPlayerEngineJet(GameObject ship, Transform firePoint, PlayerShipVisualTheme theme)
     {
         if (ship == null || ship.transform.Find("Runtime Player Engine Jet") != null)
             return;
@@ -49,7 +59,7 @@ public static class CombatEffects
 
         Light light = node.AddComponent<Light>();
         light.type = LightType.Point;
-        light.color = new Color(0.18f, 0.82f, 1f);
+        light.color = theme.EngineLight;
         light.intensity = 4.6f;
         light.range = 48f;
 
@@ -60,8 +70,8 @@ public static class CombatEffects
             node.transform,
             "Rocket White Core",
             Color.white * 2.8f,
-            new Color(0.62f, 1.45f, 2.6f, 1f),
-            new Color(0.05f, 0.58f, 1.7f, 0f),
+            theme.EngineWhiteCoreMid,
+            theme.EngineWhiteCoreEnd,
             0.18f,
             0.55f,
             72f,
@@ -77,9 +87,9 @@ public static class CombatEffects
         CreateRocketEnginePlume(
             node.transform,
             "Rocket Blue Outer Flame",
-            new Color(0.18f, 1.0f, 2.4f, 0.86f),
-            new Color(0.0f, 0.72f, 2.8f, 0.42f),
-            new Color(0.0f, 0.18f, 0.9f, 0f),
+            theme.EngineOuterStart,
+            theme.EngineOuterMid,
+            theme.EngineOuterEnd,
             0.48f,
             1.35f,
             38f,
@@ -113,7 +123,7 @@ public static class CombatEffects
         CreateRocketEngineSmoke(node.transform);
     }
 
-    private static void AddPlayerHeroFx(Transform root)
+    private static void AddPlayerHeroFx(Transform root, PlayerShipVisualTheme theme)
     {
         Bounds bounds;
         if (!TryGetLocalBounds(root, out bounds))
@@ -122,7 +132,7 @@ public static class CombatEffects
         GameObject group = new GameObject("Runtime Player Hero FX");
         group.transform.SetParent(root, false);
 
-        Color energy = new Color(0.05f, 0.95f, 1f, 1f);
+        Color energy = theme.HeroEnergy;
         Material material = GetAccentMaterial(energy, true);
 
         float width = Mathf.Max(bounds.size.x, 10f);
@@ -530,14 +540,38 @@ public static class CombatEffects
 
     public static void SpawnHit(Vector3 position, Vector3 normal)
     {
+        SpawnHit(position, normal, PlayerShipColorSelection.BlueTheme);
+    }
+
+    public static void SpawnHit(Vector3 position, Vector3 normal, PlayerShipVisualTheme theme)
+    {
         Quaternion rotation = normal.sqrMagnitude > 0.001f
             ? Quaternion.LookRotation(normal)
             : Quaternion.identity;
 
         GameObject effect = CreateEffectRoot("HitEffect", position, rotation, 0.9f);
-        AddPointLight(effect, new Color(0.25f, 0.9f, 1f), 4f, 55f, 0.14f);
+        AddPointLight(effect, theme.HitLight, 4f, 55f, 0.14f);
 
-        ParticleSystem sparks = AddParticleSystem(effect, new Color(0.25f, 0.9f, 1f, 1f), 2.2f, 6f, 0.32f, 52, 2f);
+        ParticleSystem sparks = AddParticleSystem(effect, theme.HitSparks, 2.2f, 6f, 0.32f, 52, 2f);
+        ParticleSystem.MainModule main = sparks.main;
+        main.startSpeed = new ParticleSystem.MinMaxCurve(52f, 120f);
+
+        ParticleSystem.ShapeModule shape = sparks.shape;
+        shape.shapeType = ParticleSystemShapeType.Cone;
+        shape.angle = 26f;
+        shape.radius = 2.2f;
+    }
+
+    public static void SpawnEnemyHit(Vector3 position, Vector3 normal)
+    {
+        Quaternion rotation = normal.sqrMagnitude > 0.001f
+            ? Quaternion.LookRotation(normal)
+            : Quaternion.identity;
+
+        GameObject effect = CreateEffectRoot("EnemyHitEffect", position, rotation, 0.9f);
+        AddPointLight(effect, new Color(1f, 0.14f, 0.04f), 4f, 55f, 0.14f);
+
+        ParticleSystem sparks = AddParticleSystem(effect, new Color(1f, 0.18f, 0.04f, 1f), 2.2f, 6f, 0.32f, 52, 2f);
         ParticleSystem.MainModule main = sparks.main;
         main.startSpeed = new ParticleSystem.MinMaxCurve(52f, 120f);
 
@@ -549,10 +583,15 @@ public static class CombatEffects
 
     public static void SpawnMuzzleFlash(Vector3 position, Quaternion rotation)
     {
-        GameObject effect = CreateEffectRoot("MuzzleFlash", position, rotation, 0.38f);
-        AddPointLight(effect, new Color(0.25f, 0.85f, 1f), 4f, 50f, 0.1f);
+        SpawnMuzzleFlash(position, rotation, PlayerShipColorSelection.BlueTheme);
+    }
 
-        ParticleSystem flash = AddParticleSystem(effect, new Color(0.2f, 0.9f, 1f, 1f), 3f, 9f, 0.14f, 28, 1.8f);
+    public static void SpawnMuzzleFlash(Vector3 position, Quaternion rotation, PlayerShipVisualTheme theme)
+    {
+        GameObject effect = CreateEffectRoot("MuzzleFlash", position, rotation, 0.38f);
+        AddPointLight(effect, theme.MuzzleLight, 4f, 50f, 0.1f);
+
+        ParticleSystem flash = AddParticleSystem(effect, theme.MuzzleFlash, 3f, 9f, 0.14f, 28, 1.8f);
         ParticleSystem.MainModule main = flash.main;
         main.startSpeed = new ParticleSystem.MinMaxCurve(45f, 95f);
 
@@ -579,10 +618,15 @@ public static class CombatEffects
 
     public static void AttachBulletTrail(GameObject bullet, Color color, float width, float lifetime, float headColorBlend = 0.55f, float alphaMultiplier = 1f)
     {
-        if (bullet == null || bullet.GetComponent<TrailRenderer>() != null)
+        if (bullet == null)
             return;
 
-        TrailRenderer trail = bullet.AddComponent<TrailRenderer>();
+        TrailRenderer trail = bullet.GetComponent<TrailRenderer>();
+        if (trail == null)
+        {
+            trail = bullet.AddComponent<TrailRenderer>();
+        }
+
         trail.time = lifetime;
         trail.startWidth = width;
         trail.endWidth = 0f;
@@ -1148,20 +1192,43 @@ public static class CombatEffects
         return particles;
     }
 
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void PreloadRuntimeEffectShaders()
+    {
+        GetAdditiveEffectShader();
+    }
+
+    public static Shader GetAdditiveEffectShader()
+    {
+        if (additiveEffectShader != null)
+            return additiveEffectShader;
+
+        Material preloadMaterial = Resources.Load<Material>("Preload_ThunderFlightAdditive");
+        if (preloadMaterial != null && preloadMaterial.shader != null)
+        {
+            additiveEffectShader = preloadMaterial.shader;
+            return additiveEffectShader;
+        }
+
+        additiveEffectShader = Shader.Find("Legacy Shaders/Particles/Additive");
+        if (additiveEffectShader == null)
+        {
+            additiveEffectShader = Shader.Find("Particles/Standard Unlit");
+        }
+        if (additiveEffectShader == null)
+        {
+            additiveEffectShader = Shader.Find("Sprites/Default");
+        }
+
+        return additiveEffectShader;
+    }
+
     private static Material GetAdditiveParticleMaterial()
     {
         if (additiveParticleMaterial != null)
             return additiveParticleMaterial;
 
-        Shader shader = Shader.Find("Particles/Standard Unlit");
-        if (shader == null)
-        {
-            shader = Shader.Find("Legacy Shaders/Particles/Additive");
-        }
-        if (shader == null)
-        {
-            shader = Shader.Find("Sprites/Default");
-        }
+        Shader shader = GetAdditiveEffectShader();
 
         additiveParticleMaterial = new Material(shader)
         {
@@ -1235,15 +1302,7 @@ public static class CombatEffects
         if (engineFlameMaterial != null)
             return engineFlameMaterial;
 
-        Shader shader = Shader.Find("Particles/Standard Unlit");
-        if (shader == null)
-        {
-            shader = Shader.Find("Legacy Shaders/Particles/Additive");
-        }
-        if (shader == null)
-        {
-            shader = Shader.Find("Sprites/Default");
-        }
+        Shader shader = GetAdditiveEffectShader();
 
         engineFlameMaterial = new Material(shader)
         {
@@ -1256,9 +1315,16 @@ public static class CombatEffects
 
     private static Material GetAccentMaterial(Color color, bool isPlayer)
     {
-        Material cached = isPlayer ? playerAccentMaterial : enemyAccentMaterial;
-        if (cached != null)
-            return cached;
+        if (isPlayer)
+        {
+            int key = GetColorKey(color);
+            if (playerAccentMaterials.TryGetValue(key, out Material cachedPlayerMaterial) && cachedPlayerMaterial != null)
+                return cachedPlayerMaterial;
+        }
+        else if (enemyAccentMaterial != null)
+        {
+            return enemyAccentMaterial;
+        }
 
         Shader shader = Shader.Find("Standard");
         if (shader == null)
@@ -1290,11 +1356,24 @@ public static class CombatEffects
         }
 
         if (isPlayer)
-            playerAccentMaterial = material;
+            playerAccentMaterials[GetColorKey(color)] = material;
         else
             enemyAccentMaterial = material;
 
         return material;
+    }
+
+    private static int GetColorKey(Color color)
+    {
+        unchecked
+        {
+            int hash = 17;
+            hash = hash * 31 + Mathf.RoundToInt(color.r * 1000f);
+            hash = hash * 31 + Mathf.RoundToInt(color.g * 1000f);
+            hash = hash * 31 + Mathf.RoundToInt(color.b * 1000f);
+            hash = hash * 31 + Mathf.RoundToInt(color.a * 1000f);
+            return hash;
+        }
     }
 
     private static void AddPointLight(GameObject parent, Color color, float intensity, float range, float lifetime)

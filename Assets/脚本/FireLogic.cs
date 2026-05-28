@@ -23,7 +23,7 @@ public class FireLogic : MonoBehaviour
         if (bulletPrefab == null || firePoint == null)
             return;
 
-        Instantiate(bulletPrefab, firePoint.position, firePoint.rotation);
-        CombatEffects.SpawnMuzzleFlash(firePoint.position, firePoint.rotation);
+        RuntimeObjectPool.Spawn(bulletPrefab, firePoint.position, firePoint.rotation);
+        CombatEffects.SpawnMuzzleFlash(firePoint.position, firePoint.rotation, PlayerShipColorSelection.CurrentTheme);
     }
 }

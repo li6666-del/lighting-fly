@@ -12,8 +12,13 @@ public class Settwoturn : MonoBehaviour
     public Button jumpButton2;
     public Button jumpButton3;
 
+    private GameObject colorSelectionOverlay;
+    private string pendingSceneName;
+
     void Start()
     {
+        PlayerShipColorSelection.ResetToDefault();
+
         if (jumpButton1 != null)
         {
             jumpButton1.onClick.AddListener(OnJumpButton1Click);
@@ -32,17 +37,59 @@ public class Settwoturn : MonoBehaviour
 
     public void OnJumpButton1Click()
     {
-        LoadTargetScene(targetSceneName1);
+        ShowShipColorSelection(targetSceneName1);
     }
 
     public void OnJumpButton2Click()
     {
-        LoadTargetScene(targetSceneName2);
+        ShowShipColorSelection(targetSceneName2);
     }
 
     public void OnJumpButton3Click()
     {
+        PlayerShipColorSelection.ResetToDefault();
         LoadTargetScene(targetSceneName3);
+    }
+
+    private void ShowShipColorSelection(string sceneName)
+    {
+        if (string.IsNullOrWhiteSpace(sceneName))
+            return;
+
+        if (!PlayerShipColorSelection.IsSinglePlayerScene(sceneName))
+        {
+            LoadTargetScene(sceneName);
+            return;
+        }
+
+        PlayerShipColorSelection.ResetToDefault();
+        pendingSceneName = sceneName;
+
+        if (colorSelectionOverlay != null)
+        {
+            colorSelectionOverlay.SetActive(true);
+            return;
+        }
+
+        colorSelectionOverlay = PlayerShipColorSelectionPrompt.Create(SelectShipColor, CloseShipColorSelection);
+    }
+
+    private void SelectShipColor(PlayerShipColorChoice choice)
+    {
+        PlayerShipColorSelection.Select(choice);
+        string sceneName = pendingSceneName;
+        CloseShipColorSelection();
+        LoadTargetScene(sceneName);
+    }
+
+    private void CloseShipColorSelection()
+    {
+        pendingSceneName = null;
+        if (colorSelectionOverlay != null)
+        {
+            Destroy(colorSelectionOverlay);
+            colorSelectionOverlay = null;
+        }
     }
 
     void LoadTargetScene(string sceneName)
@@ -71,5 +118,7 @@ public class Settwoturn : MonoBehaviour
         {
             jumpButton3.onClick.RemoveListener(OnJumpButton3Click);
         }
+
+        CloseShipColorSelection();
     }
 }

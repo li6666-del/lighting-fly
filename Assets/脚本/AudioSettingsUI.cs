@@ -133,6 +133,8 @@ public class AudioSettingsUI : MonoBehaviour
 
         trackNameText = CreateLabel(panel.transform, "", new Vector2(190f, -32f), 16f, TextAlignmentOptions.Center);
         trackNameText.rectTransform.sizeDelta = new Vector2(166f, 34f);
+        trackNameText.enableWordWrapping = false;
+        trackNameText.overflowMode = TextOverflowModes.Ellipsis;
 
         CreateLabel(panel.transform, "Volume", new Vector2(61f, -88f), 20f, TextAlignmentOptions.Left);
         volumeDownButton = CreateButton(panel.transform, "-", new Vector2(36f, 30f), new Vector2(132f, -90f), new Color(0.13f, 0.17f, 0.21f, 0.9f));

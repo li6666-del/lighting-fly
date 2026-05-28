@@ -15,6 +15,8 @@ public class StartIntroVideoTransition : MonoBehaviour
     private string videoFileName;
     private VideoPlayer videoPlayer;
     private RenderTexture renderTexture;
+    private RectTransform videoRect;
+    private RectTransform canvasRect;
     private bool videoFinished;
 
     public static bool PlayThenLoad(string targetSceneName, string videoFileName = DefaultVideoFileName)
@@ -60,29 +62,39 @@ public class StartIntroVideoTransition : MonoBehaviour
         canvas.sortingOrder = short.MaxValue;
         canvasObject.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         canvasObject.AddComponent<GraphicRaycaster>();
+        canvasRect = canvasObject.GetComponent<RectTransform>();
+
+        GameObject blockerObject = new GameObject("Start Intro Fullscreen Blocker");
+        blockerObject.transform.SetParent(canvasObject.transform, false);
+        Image blocker = blockerObject.AddComponent<Image>();
+        blocker.color = Color.black;
+        blocker.raycastTarget = true;
+
+        RectTransform blockerRect = blocker.rectTransform;
+        blockerRect.anchorMin = Vector2.zero;
+        blockerRect.anchorMax = Vector2.one;
+        blockerRect.offsetMin = Vector2.zero;
+        blockerRect.offsetMax = Vector2.zero;
 
         GameObject imageObject = new GameObject("Start Intro Video Image");
         imageObject.transform.SetParent(canvasObject.transform, false);
         RawImage image = imageObject.AddComponent<RawImage>();
         image.color = Color.white;
+        image.raycastTarget = true;
 
-        RectTransform imageRect = image.rectTransform;
-        imageRect.anchorMin = Vector2.zero;
-        imageRect.anchorMax = Vector2.one;
-        imageRect.offsetMin = Vector2.zero;
-        imageRect.offsetMax = Vector2.zero;
-
-        int width = Mathf.Max(1280, Screen.width);
-        int height = Mathf.Max(720, Screen.height);
-        renderTexture = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32);
-        image.texture = renderTexture;
+        videoRect = image.rectTransform;
+        videoRect.anchorMin = new Vector2(0.5f, 0.5f);
+        videoRect.anchorMax = new Vector2(0.5f, 0.5f);
+        videoRect.pivot = new Vector2(0.5f, 0.5f);
+        videoRect.anchoredPosition = Vector2.zero;
+        SetVideoRectCover(16f / 9f);
 
         videoPlayer = gameObject.AddComponent<VideoPlayer>();
         videoPlayer.playOnAwake = false;
         videoPlayer.source = VideoSource.Url;
         videoPlayer.url = GetVideoPath(videoFileName);
         videoPlayer.renderMode = VideoRenderMode.RenderTexture;
-        videoPlayer.targetTexture = renderTexture;
+        videoPlayer.aspectRatio = VideoAspectRatio.Stretch;
         videoPlayer.audioOutputMode = VideoAudioOutputMode.AudioSource;
         videoPlayer.isLooping = false;
         videoPlayer.skipOnDrop = true;
@@ -108,11 +120,22 @@ public class StartIntroVideoTransition : MonoBehaviour
             yield break;
         }
 
+        int videoWidth = videoPlayer.width > 0 ? (int)videoPlayer.width : 1920;
+        int videoHeight = videoPlayer.height > 0 ? (int)videoPlayer.height : 1080;
+        float videoAspect = videoHeight > 0 ? videoWidth / (float)videoHeight : 16f / 9f;
+        renderTexture = new RenderTexture(videoWidth, videoHeight, 0, RenderTextureFormat.ARGB32);
+        renderTexture.name = "StartIntroVideoTexture";
+        image.texture = renderTexture;
+        videoPlayer.targetTexture = renderTexture;
+        SetVideoRectCover(videoAspect);
+
         videoPlayer.Play();
         videoAudio.Play();
 
         while (!videoFinished)
         {
+            SetVideoRectCover(videoAspect);
+
             if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Space) || Input.GetMouseButtonDown(0))
             {
                 break;
@@ -128,6 +151,37 @@ public class StartIntroVideoTransition : MonoBehaviour
     {
         string safeFileName = string.IsNullOrWhiteSpace(videoFileName) ? DefaultVideoFileName : videoFileName;
         return Path.Combine(Application.streamingAssetsPath, safeFileName);
+    }
+
+    private void SetVideoRectCover(float videoAspect)
+    {
+        if (videoRect == null)
+            return;
+
+        Vector2 canvasSize = GetCanvasSize();
+        float screenAspect = canvasSize.x / Mathf.Max(1f, canvasSize.y);
+        float width = canvasSize.x;
+        float height = canvasSize.y;
+
+        if (videoAspect > screenAspect)
+        {
+            width = height * videoAspect;
+        }
+        else
+        {
+            height = width / Mathf.Max(0.01f, videoAspect);
+        }
+
+        videoRect.sizeDelta = new Vector2(width, height);
+        videoRect.anchoredPosition = Vector2.zero;
+    }
+
+    private Vector2 GetCanvasSize()
+    {
+        if (canvasRect != null && canvasRect.rect.width > 1f && canvasRect.rect.height > 1f)
+            return canvasRect.rect.size;
+
+        return new Vector2(Mathf.Max(1, Screen.width), Mathf.Max(1, Screen.height));
     }
 
     private void OnVideoFinished(VideoPlayer source)

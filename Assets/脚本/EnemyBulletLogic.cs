@@ -1,7 +1,7 @@
 using Photon.Pun;
 using UnityEngine;
 
-public class EnemyBulletLogic : MonoBehaviour
+public class EnemyBulletLogic : MonoBehaviour, IPooledObject
 {
     [Header("Bullet")]
     public float speed = 20f;
@@ -10,13 +10,52 @@ public class EnemyBulletLogic : MonoBehaviour
 
     private bool hitApplied;
     private float collisionRadius = 2f;
+    private bool spawnedFromPool;
 
     void Start()
     {
+        if (!spawnedFromPool)
+        {
+            ResetBulletState();
+        }
+    }
+
+    public void OnSpawnedFromPool()
+    {
+        spawnedFromPool = true;
+        ResetBulletState();
+    }
+
+    public void OnReturnedToPool()
+    {
+        CancelInvoke(nameof(Expire));
+        hitApplied = false;
+        ClearTrail();
+    }
+
+    private void ResetBulletState()
+    {
+        hitApplied = false;
         EnsureTriggerPhysics();
         collisionRadius = CalculateCollisionRadius();
         CombatEffects.AttachBulletTrail(gameObject, new Color(0.95f, 0.16f, 0.04f, 0.65f), 1.35f, 0.08f, 1f, 0.55f);
-        Destroy(gameObject, lifeTime);
+        ClearTrail();
+        CancelInvoke(nameof(Expire));
+        Invoke(nameof(Expire), Mathf.Max(0.05f, lifeTime));
+    }
+
+    private void ClearTrail()
+    {
+        TrailRenderer trail = GetComponent<TrailRenderer>();
+        if (trail != null)
+        {
+            trail.Clear();
+        }
+    }
+
+    private void Expire()
+    {
+        RuntimeObjectPool.Release(gameObject);
     }
 
     void Update()
@@ -49,14 +88,14 @@ public class EnemyBulletLogic : MonoBehaviour
                 return false;
 
             hitApplied = true;
-            Destroy(gameObject);
+            RuntimeObjectPool.Release(gameObject);
             if (NetworkCoopGameRuntime.ReportPlayerDamaged(damage, hitPosition, -transform.forward, blockedByShield))
                 return true;
         }
 
         hitApplied = true;
-        Destroy(gameObject);
-        CombatEffects.SpawnHit(hitPosition, -transform.forward);
+        RuntimeObjectPool.Release(gameObject);
+        CombatEffects.SpawnEnemyHit(hitPosition, -transform.forward);
 
         if (blockedByShield)
             return true;

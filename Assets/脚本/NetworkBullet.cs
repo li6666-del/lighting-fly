@@ -1,7 +1,7 @@
 using Photon.Pun;
 using UnityEngine;
 
-public class NetworkBullet : MonoBehaviourPun
+public class NetworkBullet : MonoBehaviourPun, IPooledObject
 {
     public float speed = 260f;
     public float lifeTime = 3f;
@@ -12,6 +12,10 @@ public class NetworkBullet : MonoBehaviourPun
     private bool isDestroyed;
     private bool isLocalSimulation;
     private int ownerActorNumber = -1;
+    private bool spawnedFromPool;
+    private bool defaultsCaptured;
+    private bool defaultGrantsSkillCharge;
+    private PlayerShipVisualTheme visualTheme;
 
     void Awake()
     {
@@ -23,28 +27,91 @@ public class NetworkBullet : MonoBehaviourPun
             grantsSkillCharge = legacyBulletLogic.grantsSkillCharge;
             legacyBulletLogic.enabled = false;
         }
+
+        CaptureDefaults();
     }
 
     public void InitializeLocal(int bulletOwnerActorNumber, bool skillGrantsCharge)
     {
+        InitializeLocal(
+            bulletOwnerActorNumber,
+            skillGrantsCharge,
+            NetworkPlayerController.GetNetworkThemeForActor(bulletOwnerActorNumber));
+    }
+
+    public void InitializeLocal(int bulletOwnerActorNumber, bool skillGrantsCharge, PlayerShipVisualTheme theme)
+    {
         isLocalSimulation = true;
         ownerActorNumber = bulletOwnerActorNumber;
         grantsSkillCharge = skillGrantsCharge;
+        visualTheme = theme;
+        ApplyTrail();
     }
 
     void Start()
     {
+        if (!spawnedFromPool)
+        {
+            ResetBulletStateFromRuntime();
+        }
+    }
+
+    public void OnSpawnedFromPool()
+    {
+        spawnedFromPool = true;
+        ResetBulletStateFromRuntime();
+    }
+
+    public void OnReturnedToPool()
+    {
+        CancelInvoke(nameof(DestroyNetworkBullet));
+        isDestroyed = false;
+        isLocalSimulation = false;
+        ownerActorNumber = -1;
+        grantsSkillCharge = defaultGrantsSkillCharge;
+        visualTheme = PlayerShipColorSelection.BlueTheme;
+        ClearTrail();
+    }
+
+    private void CaptureDefaults()
+    {
+        if (defaultsCaptured)
+            return;
+
+        defaultGrantsSkillCharge = grantsSkillCharge;
+        defaultsCaptured = true;
+    }
+
+    private void ResetBulletStateFromRuntime()
+    {
+        CaptureDefaults();
+        isDestroyed = false;
+        isLocalSimulation = false;
+        ownerActorNumber = -1;
+        grantsSkillCharge = defaultGrantsSkillCharge;
+        visualTheme = PlayerShipColorSelection.BlueTheme;
+
         object[] instantiateData = !isLocalSimulation && photonView != null ? photonView.InstantiationData : null;
         if (instantiateData != null && instantiateData.Length > 0 && instantiateData[0] is bool skillGrantsCharge)
         {
             grantsSkillCharge = skillGrantsCharge;
         }
 
-        CombatEffects.AttachBulletTrail(gameObject, new Color(0.15f, 0.95f, 1f, 1f), 5f, 0.12f);
+        ApplyTrail();
 
         if (isLocalSimulation || photonView == null || photonView.ViewID == 0 || photonView.IsMine)
         {
+            CancelInvoke(nameof(DestroyNetworkBullet));
             Invoke(nameof(DestroyNetworkBullet), lifeTime);
+        }
+    }
+
+    private void ClearTrail()
+    {
+        TrailRenderer trail = GetComponent<TrailRenderer>();
+        if (trail != null)
+        {
+            trail.Clear();
         }
     }
 
@@ -62,7 +129,7 @@ public class NetworkBullet : MonoBehaviourPun
 
         if (isLocalSimulation || photonView == null || photonView.ViewID == 0)
         {
-            Destroy(gameObject);
+            RuntimeObjectPool.Release(gameObject);
             return;
         }
 
@@ -82,7 +149,7 @@ public class NetworkBullet : MonoBehaviourPun
         {
             NetworkCoopBossIdentity bossIdentity = boss.GetComponent<NetworkCoopBossIdentity>();
             Vector3 bossHitPosition = other.ClosestPoint(transform.position);
-            bool bossHandled = NetworkCoopGameRuntime.ReportBossDamaged(bossIdentity, 1, bossHitPosition);
+            bool bossHandled = NetworkCoopGameRuntime.ReportBossDamaged(bossIdentity, 1, bossHitPosition, ownerActorNumber);
             if (bossHandled)
             {
                 DestroyNetworkBullet();
@@ -124,5 +191,11 @@ public class NetworkBullet : MonoBehaviourPun
         }
 
         return photonView != null && photonView.IsMine;
+    }
+
+    private void ApplyTrail()
+    {
+        CombatEffects.AttachBulletTrail(gameObject, visualTheme.BulletTrail, 5f, 0.12f);
+        ClearTrail();
     }
 }

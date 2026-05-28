@@ -182,7 +182,7 @@ public class BossController : MonoBehaviour
             if (NetworkCoopGameRuntime.SpawnEnemyBullet(position, rotation, bulletPrefab))
                 continue;
 
-            Instantiate(bulletPrefab, position, rotation);
+            RuntimeObjectPool.Spawn(bulletPrefab, position, rotation);
             CombatEffects.SpawnEnemyMuzzleFlash(position, rotation);
         }
 

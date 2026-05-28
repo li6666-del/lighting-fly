@@ -167,6 +167,7 @@ public class BloodManager : MonoBehaviour
     {
         ScoreManager.score = 0;
         blood = MaxBlood;
+        RuntimeObjectPool.ClearAll();
     }
 
     void OnDestroy()

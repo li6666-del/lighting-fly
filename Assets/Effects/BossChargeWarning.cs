@@ -398,8 +398,7 @@ public class BossChargeWarning : MonoBehaviour
     /// </summary>
     private Material CreateAdditiveMaterial(Color hdrColor)
     {
-        Shader shader = Shader.Find("Particles/Standard Unlit");
-        if (shader == null) shader = Shader.Find("Legacy Shaders/Particles/Additive");
+        Shader shader = CombatEffects.GetAdditiveEffectShader();
         if (shader == null) shader = Shader.Find("Sprites/Default");
 
         Material mat = new Material(shader) { name = "Runtime_ChargeFX_Additive" };

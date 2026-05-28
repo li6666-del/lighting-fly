@@ -2,8 +2,11 @@ using UnityEngine;
 
 public static class DifficultyManager
 {
+    public const int MaxLevel = 30;
+    public const float MaxBossOverflowHealthMultiplier = 6f;
+
     public static int Score => Mathf.Max(0, ScoreManager.score);
-    public static int Level => Score / 100;
+    public static int Level => Mathf.Min(MaxLevel, Score / 100);
 
     public static float SpawnIntervalMultiplier => Mathf.Max(0.38f, 1f - Level * 0.07f);
     public static int EnemyWaveBonus => Mathf.Min(Level / 2, 4);
@@ -20,7 +23,7 @@ public static class DifficultyManager
     public static float GetBossOverflowHealthMultiplier(int requestedBossCount, int maxBossCount)
     {
         int overflow = Mathf.Max(0, requestedBossCount - maxBossCount);
-        return 1f + overflow * 0.35f;
+        return Mathf.Min(MaxBossOverflowHealthMultiplier, 1f + overflow * 0.35f);
     }
 
     public static int GetRequiredKillsForCharge(int baseKills)

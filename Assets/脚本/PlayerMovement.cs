@@ -19,8 +19,9 @@ public class PlayerMovement : MonoBehaviour
     {
         FireLogic fireLogic = GetComponent<FireLogic>();
         Transform firePoint = fireLogic != null ? fireLogic.firePoint : null;
-        CombatEffects.ApplyPlayerShipVisuals(gameObject);
-        CombatEffects.AttachPlayerEngineJet(gameObject, firePoint);
+        PlayerShipVisualTheme theme = PlayerShipColorSelection.CurrentTheme;
+        CombatEffects.ApplyPlayerShipVisuals(gameObject, theme);
+        CombatEffects.AttachPlayerEngineJet(gameObject, firePoint, theme);
     }
 
     void Update()

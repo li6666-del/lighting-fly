@@ -23,6 +23,8 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
     private const int MaxBossDamagePerRequest = 25;
     private const int MaxSharedDamagePerRequest = 100;
     private const float StateSyncInterval = 0.08f;
+    private const float PlayerReadyCheckInterval = 0.2f;
+    private const float MaxPlayerReadyWait = 4f;
 
     public static NetworkCoopGameRuntime Instance { get; private set; }
     public static bool IsActive => Instance != null && NetworkCoopSession.IsCoopGameActive && PhotonNetwork.InRoom;
@@ -62,9 +64,12 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
     private bool sharedGameOver;
     private float nextStateSyncTime;
     private float nextConfigRecoveryTime;
+    private float nextPlayerReadyCheckTime;
+    private float combatReadyWaitStartTime;
     private bool warnedMissingEnemyPrefab;
     private bool warnedMissingEnemyBulletPrefab;
     private bool loggedFirstEnemyWave;
+    private bool combatReady;
 
     void Awake()
     {
@@ -105,8 +110,17 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
         if (!PhotonNetwork.IsMasterClient)
             return;
 
+        bool matchAlreadyRunning = combatReady
+            || loggedFirstEnemyWave
+            || ScoreManager.score > 0
+            || enemiesById.Count > 0
+            || bossesById.Count > 0;
+
+        combatReady = matchAlreadyRunning;
+        nextPlayerReadyCheckTime = 0f;
+        combatReadyWaitStartTime = matchAlreadyRunning ? Time.time : 0f;
         RemoveRemoteSmoothersForMaster();
-        nextSpawnTime = Time.time + 0.4f;
+        nextSpawnTime = Time.time + (matchAlreadyRunning ? 0.25f : 0.4f);
         nextStateSyncTime = Time.time;
         activeBossCount = 0;
         foreach (KeyValuePair<int, GameObject> bossEntry in bossesById)
@@ -121,9 +135,45 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
         nextBossId = Mathf.Max(nextBossId, GetNextAvailableId(bossesById, destroyedBossIds));
         nextBossScore = GetNextBossScoreAfterCurrentScore();
         Debug.Log($"[NetworkCoopGameRuntime] Local client became MasterClient. nextSpawnId={nextSpawnId}, nextBossId={nextBossId}, nextBossScore={nextBossScore}, activeBossCount={activeBossCount}");
+
+        if (matchAlreadyRunning)
+        {
+            Debug.Log("[NetworkCoopGameRuntime] MasterClient switched during an active run. Continuing the spawn loop without waiting for a fresh player-ready gate.");
+        }
+    }
+
+    public override void OnPlayerLeftRoom(Player otherPlayer)
+    {
+        base.OnPlayerLeftRoom(otherPlayer);
+
+        if (!NetworkCoopSession.IsCoopGameActive || sharedGameOver)
+            return;
+
+        Debug.LogWarning($"[NetworkCoopGameRuntime] Player left the co-op game: {otherPlayer?.ActorNumber}. Ending the shared run.");
+        sharedGameOver = true;
+        sharedHealth = 0;
+        BloodManager.blood = 0;
+
+        if (PhotonNetwork.IsMasterClient)
+        {
+            RaiseSharedHealth(0, true);
+        }
     }
 
     public void ConfigureFromSpawner(EnemySpawner spawner)
+    {
+        ResetMatchState();
+
+        if (!ApplySpawnConfiguration(spawner, true))
+        {
+            Debug.LogWarning("[NetworkCoopGameRuntime] No EnemySpawner found, co-op enemies cannot spawn.");
+            return;
+        }
+
+        Debug.Log($"[NetworkCoopGameRuntime] Configured. enemyPrefab={(enemyPrefab != null ? enemyPrefab.name : "NULL")}, spawnInterval={spawnInterval}, isMaster={PhotonNetwork.IsMasterClient}");
+    }
+
+    private void ResetMatchState()
     {
         sharedHealth = MaxSharedHealth;
         sharedGameOver = false;
@@ -139,11 +189,16 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
         nextSpawnId = 1;
         nextBossId = 1;
         activeBossCount = 0;
+        combatReady = false;
+        nextPlayerReadyCheckTime = 0f;
+        combatReadyWaitStartTime = 0f;
+    }
 
+    private bool ApplySpawnConfiguration(EnemySpawner spawner, bool resetTiming)
+    {
         if (spawner == null)
         {
-            Debug.LogWarning("[NetworkCoopGameRuntime] No EnemySpawner found, co-op enemies cannot spawn.");
-            return;
+            return false;
         }
 
         enemyPrefab = spawner.enemyPrefab;
@@ -162,14 +217,18 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
         bossScaleMultiplier = spawner.bossScaleMultiplier;
         bossHorizontalSpacing = spawner.bossHorizontalSpacing;
         maxBossCount = spawner.maxBossCount;
-        nextBossScore = Mathf.Max(1, bossTriggerScore);
-        nextSpawnTime = Time.time + 0.4f;
-        warnedMissingEnemyPrefab = false;
-        warnedMissingEnemyBulletPrefab = false;
-        loggedFirstEnemyWave = false;
-        nextConfigRecoveryTime = 0f;
 
-        Debug.Log($"[NetworkCoopGameRuntime] Configured. enemyPrefab={(enemyPrefab != null ? enemyPrefab.name : "NULL")}, spawnInterval={spawnInterval}, isMaster={PhotonNetwork.IsMasterClient}");
+        if (resetTiming)
+        {
+            nextBossScore = Mathf.Max(1, bossTriggerScore);
+            nextSpawnTime = Time.time + 0.4f;
+            warnedMissingEnemyPrefab = false;
+            warnedMissingEnemyBulletPrefab = false;
+            loggedFirstEnemyWave = false;
+            nextConfigRecoveryTime = 0f;
+        }
+
+        return true;
     }
 
     void Update()
@@ -181,6 +240,30 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
         {
             TryRecoverSpawnConfiguration();
             nextConfigRecoveryTime = Time.time + 1f;
+        }
+
+        if (!combatReady)
+        {
+            if (combatReadyWaitStartTime <= 0f)
+            {
+                combatReadyWaitStartTime = Time.time;
+            }
+
+            if (Time.time >= nextPlayerReadyCheckTime)
+            {
+                combatReady = AreNetworkPlayersReady();
+                nextPlayerReadyCheckTime = Time.time + PlayerReadyCheckInterval;
+
+                if (combatReady)
+                {
+                    nextSpawnTime = Time.time + 0.35f;
+                    nextStateSyncTime = Time.time;
+                    Debug.Log("[NetworkCoopGameRuntime] Network players are ready. Starting enemy spawn loop.");
+                }
+            }
+
+            if (!combatReady)
+                return;
         }
 
         if (Time.time >= nextStateSyncTime)
@@ -459,16 +542,22 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
 
     public static bool ReportBossDamaged(NetworkCoopBossIdentity boss, int damage, Vector3 hitPosition)
     {
+        int attackerActorNumber = PhotonNetwork.LocalPlayer != null ? PhotonNetwork.LocalPlayer.ActorNumber : -1;
+        return ReportBossDamaged(boss, damage, hitPosition, attackerActorNumber);
+    }
+
+    public static bool ReportBossDamaged(NetworkCoopBossIdentity boss, int damage, Vector3 hitPosition, int attackerActorNumber)
+    {
         if (!IsActive || boss == null || damage <= 0)
             return false;
 
         if (PhotonNetwork.IsMasterClient)
         {
-            Instance.TryConfirmBossDamage(boss.bossId, damage, hitPosition);
+            Instance.TryConfirmBossDamage(boss.bossId, damage, hitPosition, attackerActorNumber);
         }
         else
         {
-            Instance.RaiseBossDamageRequest(boss.bossId, damage, hitPosition);
+            Instance.RaiseBossDamageRequest(boss.bossId, damage, hitPosition, attackerActorNumber);
         }
 
         return true;
@@ -526,13 +615,18 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
     private void SpawnEnemyBulletLocal(Vector3 position, Quaternion rotation)
     {
         if (enemyBulletPrefab == null)
+        {
+            TryRecoverSpawnConfiguration();
+        }
+
+        if (enemyBulletPrefab == null)
             return;
 
-        Instantiate(enemyBulletPrefab, position, rotation);
+        RuntimeObjectPool.Spawn(enemyBulletPrefab, position, rotation);
         CombatEffects.SpawnEnemyMuzzleFlash(position, rotation);
     }
 
-    private void RaiseBossDamageRequest(int bossId, int damage, Vector3 hitPosition)
+    private void RaiseBossDamageRequest(int bossId, int damage, Vector3 hitPosition, int attackerActorNumber)
     {
         object[] content =
         {
@@ -540,7 +634,8 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
             Mathf.Max(1, damage),
             hitPosition.x,
             hitPosition.y,
-            hitPosition.z
+            hitPosition.z,
+            attackerActorNumber
         };
 
         PhotonNetwork.RaiseEvent(
@@ -551,7 +646,7 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
         );
     }
 
-    private void TryConfirmBossDamage(int bossId, int damage, Vector3 hitPosition)
+    private void TryConfirmBossDamage(int bossId, int damage, Vector3 hitPosition, int attackerActorNumber)
     {
         if (destroyedBossIds.Contains(bossId))
             return;
@@ -567,10 +662,10 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
         bossHpById[bossId] = currentHp;
 
         bool dead = currentHp <= 0;
-        RaiseBossState(bossId, currentHp, maxHp, hitPosition, dead);
+        RaiseBossState(bossId, currentHp, maxHp, hitPosition, dead, attackerActorNumber);
     }
 
-    private void RaiseBossState(int bossId, int currentHp, int maxHp, Vector3 hitPosition, bool dead)
+    private void RaiseBossState(int bossId, int currentHp, int maxHp, Vector3 hitPosition, bool dead, int attackerActorNumber)
     {
         object[] content =
         {
@@ -580,7 +675,8 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
             hitPosition.x,
             hitPosition.y,
             hitPosition.z,
-            dead
+            dead,
+            attackerActorNumber
         };
 
         PhotonNetwork.RaiseEvent(
@@ -596,7 +692,7 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
         if (!IsActive || damage <= 0)
             return false;
 
-        CombatEffects.SpawnHit(hitPosition, hitNormal);
+        CombatEffects.SpawnEnemyHit(hitPosition, hitNormal);
 
         if (blockedByShield)
             return true;
@@ -654,6 +750,10 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
 
         sharedHealth = Mathf.Max(0, sharedHealth - Mathf.Max(1, damage));
         sharedGameOver = sharedHealth <= 0;
+        if (sharedGameOver)
+        {
+            Debug.Log("[NetworkCoopGameRuntime] Shared health reached 0. Stopping co-op spawn loop and returning through game-over flow.");
+        }
         RaiseSharedHealth(sharedHealth, sharedGameOver);
     }
 
@@ -803,7 +903,8 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
         }
 
         int damage = Mathf.Clamp(requestedDamage, 1, MaxBossDamagePerRequest);
-        TryConfirmBossDamage(bossId, damage, hitPosition);
+        int attackerActorNumber = TryGetInt(data, 5, out int parsedActorNumber) ? parsedActorNumber : -1;
+        TryConfirmBossDamage(bossId, damage, hitPosition, attackerActorNumber);
     }
 
     private void HandleSharedDamageRequest(object[] data)
@@ -936,7 +1037,7 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
 
             if (spawner.enemyPrefab != null)
             {
-                ConfigureFromSpawner(spawner);
+                ApplySpawnConfiguration(spawner, false);
                 Debug.Log($"[NetworkCoopGameRuntime] Recovered co-op spawn config from {spawner.name}.");
                 return true;
             }
@@ -944,8 +1045,41 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
 
         if (fallbackSpawner != null)
         {
-            ConfigureFromSpawner(fallbackSpawner);
+            ApplySpawnConfiguration(fallbackSpawner, false);
             return enemyPrefab != null;
+        }
+
+        return false;
+    }
+
+    private bool AreNetworkPlayersReady()
+    {
+        if (!PhotonNetwork.InRoom || PhotonNetwork.CurrentRoom == null)
+            return false;
+
+        int expectedPlayers = Mathf.Max(1, PhotonNetwork.CurrentRoom.PlayerCount);
+        HashSet<int> readyActors = new HashSet<int>();
+        NetworkPlayerController[] players = FindObjectsOfType<NetworkPlayerController>(true);
+
+        foreach (NetworkPlayerController player in players)
+        {
+            if (player == null || !player.gameObject.activeInHierarchy)
+                continue;
+
+            PhotonView view = player.GetComponent<PhotonView>();
+            if (view == null || view.OwnerActorNr <= 0)
+                continue;
+
+            readyActors.Add(view.OwnerActorNr);
+        }
+
+        if (readyActors.Count >= expectedPlayers)
+            return true;
+
+        if (combatReadyWaitStartTime > 0f && Time.time - combatReadyWaitStartTime >= MaxPlayerReadyWait)
+        {
+            Debug.LogWarning($"[NetworkCoopGameRuntime] Timed out waiting for all network players ({readyActors.Count}/{expectedPlayers}). Starting combat to avoid a stalled co-op scene.");
+            return true;
         }
 
         return false;
@@ -953,6 +1087,11 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
 
     private void HandleSpawnBoss(object[] data)
     {
+        if (bossPrefab == null)
+        {
+            TryRecoverSpawnConfiguration();
+        }
+
         if (bossPrefab == null
             || !TryGetInt(data, 0, out int bossId)
             || !TryGetVector3(data, 1, out Vector3 position)
@@ -1036,7 +1175,7 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
 
         if (enemiesById.TryGetValue(spawnId, out GameObject enemyObject) && enemyObject != null)
         {
-            CombatEffects.SpawnHit(hitPosition, hitNormal);
+            CombatEffects.SpawnHit(hitPosition, hitNormal, NetworkPlayerController.GetNetworkThemeForActor(killerActorNumber));
             CombatEffects.SpawnExplosion(enemyObject.transform.position);
             Destroy(enemyObject);
         }
@@ -1088,9 +1227,10 @@ public class NetworkCoopGameRuntime : MonoBehaviourPunCallbacks, IOnEventCallbac
             return;
         }
 
+        int attackerActorNumber = TryGetInt(data, 7, out int parsedActorNumber) ? parsedActorNumber : -1;
         BossController boss = bossObject.GetComponent<BossController>();
         Vector3 hitNormal = (hitPosition - bossObject.transform.position).normalized;
-        CombatEffects.SpawnHit(hitPosition, hitNormal);
+        CombatEffects.SpawnHit(hitPosition, hitNormal, NetworkPlayerController.GetNetworkThemeForActor(attackerActorNumber));
 
         if (dead)
         {

@@ -125,7 +125,7 @@ public class Enemy : MonoBehaviour
         if (NetworkCoopGameRuntime.SpawnEnemyBullet(firePoint.position, firePoint.rotation, bulletPrefab))
             return;
 
-        Instantiate(bulletPrefab, firePoint.position, firePoint.rotation);
+        RuntimeObjectPool.Spawn(bulletPrefab, firePoint.position, firePoint.rotation);
         CombatEffects.SpawnEnemyMuzzleFlash(firePoint.position, firePoint.rotation);
     }
 
